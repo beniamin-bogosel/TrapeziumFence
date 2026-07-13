@@ -1,0 +1,17 @@
+# Build outputs
+*.o
+fence_validate
+test_trap
+
+# Large/generated certificate outputs
+*.jsonl
+
+# LaTeX auxiliary files
+Documentation/*.aux
+Documentation/*.log
+Documentation/*.out
+Documentation/*.toc
+
+# Python cache
+__pycache__/
+*.pyc

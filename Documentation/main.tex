@@ -1,0 +1,766 @@
+\documentclass[11pt]{article}
+
+\usepackage[a4paper,margin=1in]{geometry}
+\usepackage{amsmath,amssymb}
+\usepackage{booktabs}
+\usepackage{longtable}
+\usepackage{array}
+\usepackage{graphicx}
+\usepackage{hyperref}
+\usepackage{xcolor}
+\usepackage{tikz}
+\usepackage{listings}
+
+\hypersetup{
+  colorlinks=true,
+  linkcolor=blue!55!black,
+  urlcolor=blue!55!black,
+  citecolor=blue!55!black
+}
+
+\lstdefinestyle{trap}{
+  basicstyle=\ttfamily\small,
+  breaklines=true,
+  columns=fullflexible,
+  frame=single,
+  framerule=0.2pt,
+  rulecolor=\color{black!25}
+}
+\lstset{style=trap}
+
+\DeclareRobustCommand{\code}[1]{\texttt{\detokenize{#1}}}
+\newcommand{\R}{\mathbb{R}}
+\newcommand{\AB}{\overline{AB}}
+\newcommand{\Area}{\operatorname{Area}}
+
+\title{Interval Verification Documentation for \code{TrapeziumGPT}}
+\author{}
+\date{July 2026}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+This document describes the architecture, verification logic, functions, and
+recorded experiments for the \code{TrapeziumGPT} package.  The package verifies
+upper bounds for the normalized shortest equal-area fence in convex
+quadrilaterals and also records necessary-condition exclusions for optimality.
+The search subdivides a four-dimensional rectangle of coordinates for the two
+free vertices \(C,D\).  Each leaf rectangle is either discarded as certainly
+inadmissible, certified as having a shortest fence value below a threshold
+\(\theta\), certified nonoptimal by the opposite-pair equality condition, or
+retained as an unresolved survivor.  The certificate verifier re-checks both
+the local leaf claims and the global dyadic tiling of the original domain.
+\end{abstract}
+
+\tableofcontents
+
+\section{Mathematical Normalization}
+
+The package studies convex quadrilaterals \(ABCD\) with \(A=(0,0)\),
+\(B=(1,0)\), \(C=(c_1,c_2)\), and \(D=(d_1,d_2)\).  The side \(AB\) is assumed
+to be a longest side and is normalized to length \(1\).  This loses no
+generality for the target functional, because fence lengths are divided by
+\(\sqrt{\Area(ABCD)}\).  A quadrilateral with a longer side can be rescaled and
+appears in another copy of the normalized search.
+
+The raw search box is
+\[
+  c_1\in[0,2],\qquad c_2\in[0,1],\qquad
+  d_1\in[-1,1],\qquad d_2\in[0,1].
+\]
+The admissibility predicate keeps only boxes that may contain counterclockwise
+convex quadrilaterals whose non-base side lengths are at most \(1\):
+\[
+  |BC|\le 1,\qquad |CD|\le 1,\qquad |DA|\le 1.
+\]
+
+For a quadrilateral \(Q=ABCD\), the code computes six scale-invariant upper
+bounds \(F_i(Q)\) for the normalized shortest fence value:
+\[
+  f(Q) \le \min_{0\le i<6} F_i(Q).
+\]
+The six items are four vertex-angle bounds and two opposite-edge-pair bounds.
+A box is certified below \(\theta\) when interval arithmetic proves that the
+upper endpoint of an enclosure for \(\min_i F_i\) is at most \(\theta\).
+Consequently, certified boxes are one-sided exclusions for the problem
+\(f(Q)>\theta\): they prove that no admissible quadrilateral in the box has
+normalized shortest fence value above the threshold.
+
+\section{Package Architecture}
+
+The C implementation is arranged in layers:
+
+\begin{description}
+  \item[\code{geom.c}, \code{geom.h}] Arb arithmetic wrappers, four-variable
+  forward-mode automatic differentiation jets, and basic point/vector
+  operations.
+
+  \item[\code{series.c}, \code{series.h}] Rigorous enclosures for
+  \(g(\gamma)=\gamma/\sin\gamma\) and \(g'(\gamma)\), used by the
+  parallel-safe opposite-pair formula near \(\gamma=0\).
+
+  \item[\code{functionals.c}, \code{functionals.h}] Construction of the six
+  upper-bound functionals, natural and centered interval enclosures, the
+  minimum envelope used by certification, and the optional
+  \code{functionals\_opposite\_pairs\_disjoint} nonoptimality certificate.
+
+  \item[\code{admissible.c}, \code{admissible.h}] Conservative interval tests
+  that discard boxes containing no admissible normalized quadrilateral, plus
+  the flat/small-area certificate \code{box\_small\_area\_certifies\_low}.
+
+  \item[\code{search.c}, \code{search.h}] Dyadic subdivision engine.  It
+  classifies boxes as discarded, certified low, flat-area low, nonoptimal, or
+  surviving; splits unresolved boxes; collects statistics; and can seed a
+  refinement run from previous survivors.
+
+  \item[\code{cert.c}, \code{cert.h}] JSONL certificate writer and stateless
+  certificate verifier.  The verifier recomputes local claims and checks that
+  all leaves tile the original domain by the same dyadic splitting rule.
+
+  \item[\code{fence_validate.c}] Command-line front end for searching,
+  refining, verifying, and evaluating a point.
+
+  \item[\code{analyze_cert.py}] Safe postprocessing of certificate files.  It
+  does not replace certificate verification.
+
+  \item[\code{tests/test_trap.c}] Unit tests for the reference trapezoid,
+  pair-bound formula agreement, series evaluation, inadmissibility, one
+  interior certification, the pair-equality certificate, and the flat-area
+  certificate.
+\end{description}
+
+\section{Rectangle Validation Logic}
+
+\subsection{Cells}
+
+A search cell is a four-dimensional rectangle
+\[
+  X =
+  [c_{1}^{-},c_{1}^{+}]
+  \times [c_{2}^{-},c_{2}^{+}]
+  \times [d_{1}^{-},d_{1}^{+}]
+  \times [d_{2}^{-},d_{2}^{+}].
+\]
+Equivalently, it is a product of two planar rectangles:
+\[
+  X_C=[c_{1}^{-},c_{1}^{+}]\times[c_{2}^{-},c_{2}^{+}],
+  \qquad
+  X_D=[d_{1}^{-},d_{1}^{+}]\times[d_{2}^{-},d_{2}^{+}].
+\]
+The initial cell has
+\[
+  X_C=[0,2]\times[0,1],
+  \qquad
+  X_D=[-1,1]\times[0,1].
+\]
+
+\begin{figure}[h]
+\centering
+\begin{tikzpicture}[scale=2.1]
+  \begin{scope}
+    \draw[->] (-0.1,0) -- (2.2,0) node[right] {\(c_1\)};
+    \draw[->] (0,-0.1) -- (0,1.2) node[above] {\(c_2\)};
+    \draw[very thick] (0,0) rectangle (2,1);
+    \draw[dashed] (1,0) -- (1,1);
+    \draw[dashed] (0,0.5) -- (2,0.5);
+    \node at (1,-0.35) {\(C\)-rectangle: \([0,2]\times[0,1]\)};
+    \node[below] at (0,0) {\(0\)};
+    \node[below] at (1,0) {\(1\)};
+    \node[below] at (2,0) {\(2\)};
+    \node[left] at (0,0.5) {\(\frac12\)};
+    \node[left] at (0,1) {\(1\)};
+  \end{scope}
+  \begin{scope}[xshift=3.2cm]
+    \draw[->] (-1.2,0) -- (1.2,0) node[right] {\(d_1\)};
+    \draw[->] (-1,-0.1) -- (-1,1.2) node[above] {\(d_2\)};
+    \draw[very thick] (-1,0) rectangle (1,1);
+    \draw[dashed] (0,0) -- (0,1);
+    \draw[dashed] (-1,0.5) -- (1,0.5);
+    \node at (0,-0.35) {\(D\)-rectangle: \([-1,1]\times[0,1]\)};
+    \node[below] at (-1,0) {\(-1\)};
+    \node[below] at (0,0) {\(0\)};
+    \node[below] at (1,0) {\(1\)};
+    \node[left] at (-1,0.5) {\(\frac12\)};
+    \node[left] at (-1,1) {\(1\)};
+  \end{scope}
+\end{tikzpicture}
+\caption{Equal-axis initial planar grids for \(C\) and \(D\).  Combining one
+rectangle from the \(C\)-grid with one rectangle from the \(D\)-grid gives a
+four-dimensional cell.}
+\end{figure}
+
+\subsection{Splitting Rule}
+
+The root spans are
+\[
+  (2,1,2,1)
+\]
+for the coordinates \((c_1,c_2,d_1,d_2)\).  The search compares scaled widths
+\[
+  \frac{c_1^+-c_1^-}{2},\qquad
+  c_2^+-c_2^-,\qquad
+  \frac{d_1^+-d_1^-}{2},\qquad
+  d_2^+-d_2^-.
+\]
+The coordinate with largest scaled width is bisected.  If the coordinate is
+\(c_1\) or \(c_2\), only the \(C\)-rectangle changes; if it is \(d_1\) or
+\(d_2\), only the \(D\)-rectangle changes.  This rule is deterministic and is
+used by both the search and the certificate verifier.
+
+\subsection{Leaf Classification}
+
+For a box \(X\), the search applies the following logic:
+
+\begin{enumerate}
+  \item If \code{box\_certainly\_inadmissible} proves that the entire box
+  violates convexity, side-length, or optional half-symmetry constraints, the
+  leaf is written with status \code{discarded}.
+
+  \item If \code{--flat-area-cert} is enabled and
+  \code{box\_small\_area\_certifies\_low} proves the flat/small-area estimate
+  below, the leaf is written with status \code{flat\_area}.  This is a genuine
+  low-fence certificate.
+
+  \item If \code{--pair-eq-cert} is enabled and
+  \code{functionals\_opposite\_pairs\_disjoint} proves that the two
+  opposite-pair fence intervals are disjoint, the leaf is written with status
+  \code{nonoptimal}.  This excludes an optimizer by a necessary optimality
+  condition, but is not by itself a low-fence claim.
+
+  \item Otherwise, \code{functionals\_min} computes an interval enclosure
+  \([f_{\mathrm{lo}},f_{\mathrm{hi}}]\) for the minimum of the six upper-bound
+  items.  If the enclosure is finite and \(f_{\mathrm{hi}}\le\theta\), the leaf
+  is written with status \code{certified}.
+
+  \item If the box is not certified and its largest scaled width is at most
+  \code{wfloor}, it is written with status \code{survivor}.  A survivor is not
+  evidence of optimality; it is merely an unresolved part of the outer
+  neighborhood.
+
+  \item Otherwise the box is split into two children and the process continues.
+\end{enumerate}
+
+The search can be restarted from survivors by passing \code{--refine FILE}.
+The refined output plus the discarded/certified leaves of the previous run
+forms a complete certificate for the original root box.
+
+\subsection{Certificate Semantics}
+
+A complete verified certificate proves:
+\[
+  \text{every admissible quadrilateral outside the survivor union is either}
+\]
+\[
+  \text{certified below \(\theta\) or certified nonoptimal.}
+\]
+Statuses \code{certified} and \code{flat\_area} are low-fence certificates:
+they prove \(f(Q)\le\theta\) throughout the box.  Status \code{nonoptimal}
+means that no optimizer lies in the box, because a necessary optimality
+condition fails.  It does not assert a pointwise low-fence bound.
+
+Therefore a certificate with \code{--pair-eq-cert} enabled should be read as an
+exclusion certificate for possible above-threshold optimizers, not simply as a
+partition into low boxes and survivors.  It does not prove that survivor boxes
+contain values above \(\theta\), nor does it produce a lower bound for the true
+optimum.  It gives an outer neighborhood for currently unresolved candidate
+configurations.
+
+\section{Auxiliary Certificates}
+
+\subsection{Opposite-Pair Equality}
+
+The two opposite-pair items correspond to the fence constructions associated to
+the pairs \((AB,CD)\) and \((BC,DA)\).  A theoretical necessary condition for
+optimality is that these two fences agree at an optimizer.  The optional
+certificate \code{--pair-eq-cert} evaluates interval enclosures for the two
+opposite-pair items.  If the finite intervals are disjoint, then no point in
+the box can satisfy the equality condition, and the box is written with status
+\code{nonoptimal}.
+
+This certificate is independent of the threshold \(\theta\).  It removes
+regions that cannot contain a maximizing quadrilateral even when the current
+upper-bound envelope is too wide to certify \(f(Q)\le\theta\).
+
+\subsection{Flat and Small-Area Estimate}
+
+Let
+\[
+  A=\Area(ABCD),\qquad h=\max\{c_2,d_2\}.
+\]
+For the fence associated to the pair of opposite sides \((AB,CD)\), a direct
+construction gives
+\[
+  L_{AB,CD}\le h.
+\]
+Indeed, the relevant separating curve can be chosen with length no larger than
+the largest height of the two top vertices over the base line \(AB\).
+
+For an admissible counterclockwise convex quadrilateral in the normalized
+domain,
+\[
+  A=\Area(ABC)+\Area(ACD)>\frac{c_2}{2},
+  \qquad
+  A=\Area(ABD)+\Area(BCD)>\frac{d_2}{2}.
+\]
+Hence \(h\le 2A\), and therefore
+\[
+  \frac{L_{AB,CD}}{\sqrt A}\le \frac{h}{\sqrt A}\le 2\sqrt A.
+\]
+Consequently, if interval arithmetic proves
+\[
+  A_{\mathrm{ub}}\le \frac{\theta^2}{4},
+\]
+then the whole box has normalized shortest fence value at most \(\theta\).
+This is implemented by \code{box\_small\_area\_certifies\_low} and recorded
+with status \code{flat\_area}.
+
+For the threshold used below,
+\[
+  \theta=1.0496,\qquad
+  \theta^2=1.10166016,\qquad
+  \frac{\theta^2}{4}=0.27541504.
+\]
+
+\subsection{Angle Consequence}
+
+The vertex fence at an angle \(\alpha\) has normalized upper bound
+\(\sqrt{\alpha}\).  Thus, if the smallest angle of \(ABCD\) is less than
+\(\theta^2\), the quadrilateral is already below threshold.  Any possible
+above-threshold optimizer must therefore have all four angles at least
+\(\theta^2\), so its largest angle is at most
+\[
+  2\pi-3\theta^2.
+\]
+For \(\theta=1.0496\), this is
+\[
+  2.978204827\text{ radians}=170.638567^\circ,
+\]
+or equivalently the gap from a straight angle is at least
+\[
+  3\theta^2-\pi=0.163387826\text{ radians}.
+\]
+This angle observation explains why very flat quadrilaterals should not be
+optimal.  The implemented small-area certificate above is the direct
+quantitative exclusion used in the current computation.
+
+\section{Functional Bounds}
+
+\subsection{Vertex Bounds}
+
+For a vertex \(V\) with neighboring vertices \(P,Q\), the vertex item is
+\[
+  F_V = \sqrt{\angle PVQ}.
+\]
+The angle is computed as
+\[
+  \operatorname{atan2}\bigl(|(P-V)\times(Q-V)|,\ (P-V)\cdot(Q-V)\bigr).
+\]
+If a coarse interval contains a degenerate vertex case where \code{atan2}
+becomes indeterminate, the value interval is clamped conservatively to
+\([0,\pi]\), and derivative information is treated as indeterminate.  In
+centered mode this forces a conservative fallback to the natural enclosure.
+
+\subsection{Opposite-Pair Bounds}
+
+There are two opposite-pair items: \((AB,CD)\) and \((BC,DA)\).  Let the two
+supporting line directions make acute angle \(\gamma\in[0,\pi/2]\), and let
+\(A_Q=\Area(ABCD)\).  The implementation uses two algebraically identical
+formulas.
+
+When \(\inf\gamma>\code{GAMMA\_SPLIT}\), the apex form is used.  Let \(O\) be
+the intersection point of the two supporting lines, and let \(T_0,T_1\) be the
+areas of the two triangles formed by the non-pair edges and \(O\).  Then
+\[
+  F_{\mathrm{pair}}^2 = \frac{\gamma(T_0+T_1)}{A_Q}.
+\]
+Near parallelism, the symmetric formula is used:
+\[
+  F_{\mathrm{pair}}^2 =
+  \frac{\gamma}{\sin\gamma}\,
+  \frac{p_a+p_b}{2A_Q},
+\]
+where each \(p\) is a product of distances from the endpoints of one non-pair
+edge to the two opposite supporting lines.  This form avoids the unstable
+intersection point \(O\) when \(\gamma\) is small.
+
+\subsection{Natural and Centered Enclosures}
+
+The natural enclosure evaluates each expression directly over interval boxes.
+The centered enclosure uses a mean-value form
+\[
+  F_i(m) + \sum_{k=0}^{3} \partial_k F_i(X)\,[-r_k,r_k],
+\]
+where \(m\) is the coordinate midpoint and \(r_k\) is half the coordinate
+width.  The derivatives \(\partial_kF_i(X)\) are obtained by forward-mode
+automatic differentiation over Arb balls.  In centered mode the code combines
+the centered and natural enclosures conservatively: if both are finite and
+overlap, their intersection is used; if they are finite but disjoint, their
+hull is used; if one is non-finite, the finite one is used.
+
+\section{Function Reference}
+
+This section lists the implemented functions by module.  Static functions are
+included because they encode important proof logic.
+
+\subsection{\code{geom.c}/\code{geom.h}}
+
+\begin{longtable}{>{\ttfamily}p{0.30\textwidth}p{0.62\textwidth}}
+\toprule
+Function & Purpose \\
+\midrule
+\endhead
+jet\_init & Initializes the value ball and all four derivative balls of a jet. \\
+jet\_clear & Clears all Arb storage owned by a jet. \\
+jet\_set & Copies a jet value and its derivative enclosures. \\
+jet\_set\_var & Seeds one moduli coordinate as an automatic-differentiation variable with derivative \(1\) in coordinate \(k\). \\
+jet\_set\_const & Sets a constant Arb value and zero derivatives. \\
+jet\_set\_si & Sets a signed integer constant and zero derivatives. \\
+jet\_add & Adds two jets componentwise. \\
+jet\_sub & Subtracts two jets componentwise. \\
+jet\_neg & Negates value and derivatives. \\
+jet\_mul & Multiplies jets using the product rule; temporaries allow aliasing. \\
+jet\_div & Divides jets using the quotient rule; non-finite balls are preserved when the denominator straddles zero. \\
+jet\_sqr & Squares a jet and applies \(d(a^2)=2a\,da\). \\
+jet\_sqrt & Applies square root with derivative \(da/(2\sqrt a)\).  Degenerate input may produce non-finite derivative enclosures, which higher layers handle conservatively. \\
+jet\_abs & Computes \(|a|\).  If the value straddles zero, the value becomes \([0,\sup |a|]\) and derivatives receive sign uncertainty. \\
+jet\_atan2 & Computes \(\operatorname{atan2}(y,x)\) and its derivative \((x\,dy-y\,dx)/(x^2+y^2)\). \\
+jet\_mul\_si & Multiplies a jet by a signed integer. \\
+jet\_mul\_arb & Multiplies a jet by a scalar Arb constant. \\
+jpt\_init & Initializes a two-coordinate jet point. \\
+jpt\_clear & Clears a jet point. \\
+jpt\_sub & Subtracts two jet points. \\
+jet\_cross & Computes the two-dimensional cross product of two jet vectors. \\
+jet\_dot & Computes the dot product of two jet vectors. \\
+trap\_cross & Scalar Arb cross product for raw vector components. \\
+trap\_dot & Scalar Arb dot product for raw vector components. \\
+\bottomrule
+\end{longtable}
+
+\subsection{\code{series.c}/\code{series.h}}
+
+\begin{longtable}{>{\ttfamily}p{0.30\textwidth}p{0.62\textwidth}}
+\toprule
+Function & Purpose \\
+\midrule
+\endhead
+series\_build & Static initializer that computes Taylor coefficients for \(\gamma/\sin\gamma\) as rational numbers and stores them as high-precision Arb balls. \\
+ensure\_coeffs & Static guard that lazily initializes the coefficient table; protected by an OpenMP critical section when OpenMP is enabled. \\
+series\_cleanup & Clears cached coefficient balls.  Called by the CLI and tests before exit. \\
+ghi\_ball & Static helper that turns the upper endpoint of a \(\gamma\) interval into a thin Arb ball. \\
+clamp\_nonneg & Static helper that intersects \(\gamma\) with \([0,\pi/2]\), valid because the pair angle is acute by construction. \\
+gamma\_over\_sin\_series & Taylor-series enclosure for \(g(\gamma)=\gamma/\sin\gamma\), with a rigorous positive tail bound. \\
+gamma\_over\_sin\_value & Monotone endpoint enclosure for \(g(\gamma)\), avoiding the removable \(0/0\) singularity. \\
+gamma\_over\_sin\_deriv & Encloses \(g'(\gamma)\) by direct formula away from zero and by series near zero. \\
+jet\_gamma\_over\_sin & Applies \(g\) to a jet using the value enclosure and derivative enclosure. \\
+\bottomrule
+\end{longtable}
+
+\subsection{\code{functionals.c}/\code{functionals.h}}
+
+\begin{longtable}{>{\ttfamily}p{0.30\textwidth}p{0.62\textwidth}}
+\toprule
+Function & Purpose \\
+\midrule
+\endhead
+vbound & Static helper for the vertex bound \(\sqrt{\angle PVQ}\). \\
+pdist & Static helper for the distance from a point to a line, used in the parallel-safe pair formula. \\
+tri\_area & Static helper for triangle area \( \frac12 |(Q-P)\times(O-P)| \). \\
+pair\_bound & Static helper implementing the opposite-pair bound.  It selects the apex formula or the parallel-safe formula unless a test forces one. \\
+compute\_items & Static builder for the six item jets from the four coordinate jets.  It also constructs the quadrilateral area \(A_Q=(c_2+c_1d_2-d_1c_2)/2\). \\
+functionals\_eval & Public routine that encloses all six items on a coordinate box, in natural or centered form. \\
+functionals\_pair\_forced & Test hook that evaluates one pair item at a point while forcing the apex or parallel-safe formula. \\
+functionals\_min & Encloses the minimum envelope over the six items.  Non-finite item enclosures are ignored; if all six are non-finite, the result is \(+\infty\), so the search cannot certify the box. \\
+functionals\_opposite\_pairs\_disjoint & Encloses the two opposite-pair items and returns true only when both finite intervals are disjoint, certifying failure of the pair-equality necessary condition for optimality. \\
+\bottomrule
+\end{longtable}
+
+\subsection{\code{admissible.c}/\code{admissible.h}}
+
+\begin{longtable}{>{\ttfamily}p{0.30\textwidth}p{0.62\textwidth}}
+\toprule
+Function & Purpose \\
+\midrule
+\endhead
+set\_box & Static helper converting double endpoints into an Arb interval. \\
+sqlen & Static helper computing squared vector length in Arb arithmetic. \\
+box\_certainly\_inadmissible & Returns true only when a whole box is proved inadmissible.  It checks CCW convexity through cross products, side lengths through squared distances, and optionally the half-domain condition \(c_1+d_1\ge1\). \\
+box\_small\_area\_certifies\_low & Returns true only when the interval upper bound for area satisfies \(A_{\rm ub}\le\theta^2/4\), so the estimate \(L_{AB,CD}/\sqrt A\le 2\sqrt A\) proves the box below threshold. \\
+\bottomrule
+\end{longtable}
+
+\subsection{\code{search.c}/\code{search.h}}
+
+\begin{longtable}{>{\ttfamily}p{0.30\textwidth}p{0.62\textwidth}}
+\toprule
+Function & Purpose \\
+\midrule
+\endhead
+search\_root\_box & Writes the full coordinate domain \([0,2]\times[0,1]\times[-1,1]\times[0,1]\). \\
+st\_init & Static stack initializer for pending boxes. \\
+st\_free & Static stack destructor. \\
+st\_push & Static stack push with geometric reallocation. \\
+st\_pop & Static stack pop; returns false when empty. \\
+widest\_coord & Static helper selecting the coordinate with largest root-span-scaled width. \\
+classify & Static core classifier.  It applies inadmissibility, optional flat-area certification, optional pair-equality nonoptimality, functional certification, optional adaptive precision, survivor flooring, and child generation. \\
+stats\_add\_leaf & Static statistics accumulator for a final leaf. \\
+run\_serial & Static depth-first serial driver over a seeded stack. \\
+run\_parallel & Static OpenMP driver using a shared stack and critical sections for stack/statistics updates. \\
+run\_stack & Static dispatcher that initializes statistics and selects serial or parallel execution. \\
+search\_run & Starts a search from the root box. \\
+search\_run\_seeded & Starts a search from explicit seed boxes, used by \code{--refine}. \\
+\bottomrule
+\end{longtable}
+
+\subsection{\code{cert.c}/\code{cert.h}}
+
+\begin{longtable}{>{\ttfamily}p{0.30\textwidth}p{0.62\textwidth}}
+\toprule
+Function & Purpose \\
+\midrule
+\endhead
+status\_name & Static conversion from leaf status enum to JSON status string. \\
+cert\_write\_leaf & Leaf callback that writes one JSON line containing box, status, active item, enclosure, and precision. \\
+parse\_line & Static parser for the simple JSONL certificate format. \\
+parse\_status & Static parser for status strings; accepts \code{low} as an alias for \code{certified}, and recognizes \code{flat\_area} and \code{nonoptimal}. \\
+cmp\_double & Static total ordering helper for doubles used in sorting boxes. \\
+cmp\_box\_arrays & Static lexicographic comparison of box endpoints. \\
+leaf\_cmp & Static comparator for sorting certificate leaves. \\
+find\_leaf & Static binary search for an exact dyadic box in the sorted certificate array. \\
+widest\_coord\_cert & Static copy of the deterministic splitting rule used by the verifier. \\
+verify\_leaf\_claim & Static local audit of one leaf: discarded boxes must still be certainly inadmissible; certified and flat-area boxes must recompute below \(\theta\); nonoptimal boxes must recompute disjoint opposite-pair intervals; survivors require no value claim. \\
+verify\_cover\_node & Static recursive tiling audit.  It descends the dyadic tree and requires every generated node to be represented by exactly one certificate leaf or by its two children. \\
+cert\_load\_survivors & Loads survivor boxes from a certificate file for a refinement run. \\
+cert\_verify & Public verifier combining parsing, duplicate detection, global coverage checking, and local claim recomputation. \\
+\bottomrule
+\end{longtable}
+
+\subsection{\code{fence\_validate.c}}
+
+\begin{longtable}{>{\ttfamily}p{0.30\textwidth}p{0.62\textwidth}}
+\toprule
+Function & Purpose \\
+\midrule
+\endhead
+usage & Static helper printing command-line options. \\
+main & Parses options, dispatches point evaluation, verification, full search, or survivor refinement; writes certificates and prints statistics. \\
+\bottomrule
+\end{longtable}
+
+\subsection{Python Tools and Tests}
+
+\begin{longtable}{>{\ttfamily}p{0.30\textwidth}p{0.62\textwidth}}
+\toprule
+Function or file & Purpose \\
+\midrule
+\endhead
+analyze\_cert.py & Summarizes certificates safely.  It reports survivor volume and separates certainly-admissible survivor cores from boundary-straddling survivors. \\
+tests/test\_trap.c: ok & Records a unit-test pass/fail result. \\
+tests/test\_trap.c: ub, lb & Convert Arb upper and lower endpoints to doubles for tests. \\
+tests/test\_trap.c: approx & Checks that an Arb enclosure lies within a tolerance of a reference value. \\
+tests/test\_trap.c: test\_Tstar & Checks the reference trapezoid values and active pair item. \\
+tests/test\_trap.c: test\_pair\_forms & Checks agreement of the two opposite-pair formulas. \\
+tests/test\_trap.c: test\_series & Checks \(\gamma/\sin\gamma\) series enclosures against direct Arb evaluation. \\
+tests/test\_trap.c: test\_inadmissible & Checks conservative inadmissibility on known examples. \\
+tests/test\_trap.c: test\_interior\_certify & Checks that an interior sub-threshold box certifies. \\
+tests/test\_trap.c: test\_pair\_equality\_certificate & Checks that a box with disjoint opposite-pair intervals is certified nonoptimal, while a small box around \(T^\ast\) is not rejected by this certificate. \\
+tests/test\_trap.c: test\_flat\_area\_certificate & Checks that small-area boxes are certified low and that a small box around \(T^\ast\) is not eliminated by the flat-area estimate. \\
+\bottomrule
+\end{longtable}
+
+\section{Command-Line Interface}
+
+The executable is \code{fence\_validate}.  The principal options are:
+
+\begin{description}
+  \item[\code{--theta T}] Threshold for certification.
+  \item[\code{--wfloor W}] Scaled-width floor at which unresolved boxes become survivors.
+  \item[\code{--prec P}] Starting Arb precision in bits.
+  \item[\code{--maxprec M}] Cap for adaptive precision.
+  \item[\code{--form natural|centered}] Interval enclosure mode.
+  \item[\code{--half}] Use the optional reflection half-domain \(c_1+d_1\ge1\).
+  \item[\code{--serial}] Force single-threaded execution.
+  \item[\code{--adaptive}] Retry marginal unresolved boxes at higher precision.
+  \item[\code{--pair-eq-cert}] Certify boxes as \code{nonoptimal} when the two opposite-pair fence intervals are disjoint.
+  \item[\code{--flat-area-cert}] Certify boxes as \code{flat\_area} when the small-area estimate proves normalized fence value below \(\theta\).
+  \item[\code{--max-leaves N}] Debugging cap.  Output from capped runs should not be treated as a complete certificate.
+  \item[\code{--out FILE}] Write a JSONL certificate stream.
+  \item[\code{--stats}] Print summary statistics.
+  \item[\code{--verify FILE}] Re-check a certificate.
+  \item[\code{--eval c1 c2 d1 d2}] Print the six items and minimum at a point.
+  \item[\code{--refine FILE}] Seed the search from survivor boxes in a previous certificate.
+\end{description}
+
+\section{Experiments}
+
+\subsection{Build and Machine}
+
+The current threshold experiment used serial execution with centered
+enclosures, precision \(70\), and both auxiliary certificates:
+
+\begin{lstlisting}
+make OMP=0
+\end{lstlisting}
+
+Machine characteristics for the timings:
+
+\begin{center}
+\begin{tabular}{ll}
+\toprule
+Host & \code{beni-ThinkPad-P53} \\
+OS/kernel & Ubuntu 24.04, Linux \code{6.11.0-29-generic} \\
+CPU & Intel Core i7-9750H at 2.60 GHz, 6 cores / 12 threads \\
+Memory & 31 GiB RAM, 29 GiB swap \\
+Compiler & Ubuntu GCC \code{13.3.0} \\
+Mode & \code{make OMP=0}, \code{--serial} \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\subsection{Reference Trapezoid}
+
+The reference trapezoid used in diagnostics is approximately
+\[
+  C^\ast=(0.6417451566,\ 0.7071006812),\qquad
+  D^\ast=(0.3582548434,\ 0.7071006812).
+\]
+Point evaluation gives
+\[
+  f(T^\ast)\approx 1.04968581549,
+\]
+with an opposite-pair item active.
+
+\subsection{Threshold \texorpdfstring{\(\theta=1.0496\)}{theta=1.0496}}
+
+The following sequence refines only the survivors of the previous run.  Each
+run uses \code{--theta 1.0496}, \code{--prec 70}, \code{--form centered},
+\code{--serial}, \code{--flat-area-cert}, and \code{--pair-eq-cert}.
+
+\begingroup
+\scriptsize
+\begin{longtable}{lrrrrrrrrr}
+\toprule
+Run & \code{wfloor} & Time (s) & Leaves & Discarded & Certified &
+Flat & Nonopt. & Survivors & Survivor volume \\
+\midrule
+\endhead
+Base & 0.025 & 82.416 & 215758 & 11555 & 116319 & 213 & 17884 & 69787 &
+\(1.66385{\times}10^{-2}\) \\
+Refine 1 & 0.0125 & 112.479 & 360798 & 2967 & 282735 & 0 & 50065 & 25031 &
+\(3.72991{\times}10^{-4}\) \\
+Refine 2 & 0.00625 & 35.136 & 119594 & 28 & 51386 & 0 & 55878 & 12302 &
+\(1.14571{\times}10^{-5}\) \\
+Refine 3 & 0.003125 & 18.052 & 66134 & 0 & 17312 & 0 & 39816 & 9006 &
+\(5.24218{\times}10^{-7}\) \\
+\bottomrule
+\end{longtable}
+\endgroup
+
+The commands were:
+
+\begin{lstlisting}
+./fence_validate --theta 1.0496 --wfloor 0.025 --prec 70 \
+  --form centered --serial --flat-area-cert --pair-eq-cert \
+  --out flat_pair_cert_w0025.jsonl --stats
+
+./fence_validate --theta 1.0496 --wfloor 0.0125 --prec 70 \
+  --form centered --serial --flat-area-cert --pair-eq-cert \
+  --refine flat_pair_cert_w0025.jsonl \
+  --out flat_pair_refine_w00125.jsonl --stats
+
+./fence_validate --theta 1.0496 --wfloor 0.00625 --prec 70 \
+  --form centered --serial --flat-area-cert --pair-eq-cert \
+  --refine flat_pair_refine_w00125.jsonl \
+  --out flat_pair_refine_w000625.jsonl --stats
+
+./fence_validate --theta 1.0496 --wfloor 0.003125 --prec 70 \
+  --form centered --serial --flat-area-cert --pair-eq-cert \
+  --refine flat_pair_refine_w000625.jsonl \
+  --out flat_pair_refine_w0003125.jsonl --stats
+\end{lstlisting}
+
+\subsection{Survivor Analysis}
+
+The postprocessor applied to the last refinement file reports that all
+remaining survivors are certainly admissible, with zero boundary-straddling
+survivor volume.  The survivor union is contained in the product
+\[
+  R_C\times R_D,
+\]
+where
+\[
+\begin{aligned}
+R_C&=[0.6171875,\ 0.703125]\times[0.662109375,\ 0.748046875],\\
+R_D&=[0.296875,\ 0.3828125]\times[0.662109375,\ 0.748046875].
+\end{aligned}
+\]
+The survivor volume bound is
+\[
+  5.24218\times 10^{-7},
+\]
+and the farthest point of a survivor box from \(T^\ast\), in the coordinate box
+metric used by the analysis script, is \(0.07065\).
+
+\begin{figure}[h]
+\centering
+\includegraphics[width=0.86\textwidth]{figures/current_survivor_rectangles.png}
+\caption{Equal-axis PNG export of the current survivor rectangles for \(C\) and
+\(D\), together with the reference trapezoid point.}
+\end{figure}
+
+\subsection{Interpretation}
+
+For \(\theta=1.0496\), the current refinement sequence leaves only boxes inside
+\(R_C\times R_D\).  Outside this product rectangle, every admissible normalized
+quadrilateral is either certified to have shortest fence value at most
+\(1.0496\) or certified nonoptimal by the opposite-pair equality condition.
+Thus there is no possible above-threshold optimizer outside \(R_C\times R_D\).
+
+This is stronger than the earlier run without auxiliary certificates, but it
+must be read with the correct status semantics: \code{nonoptimal} is not a
+low-fence estimate.  It is a separate exclusion using a necessary condition at
+optimality.
+
+\subsection{Audit Status}
+
+The listed files are incremental refinement files: each refinement replaces the
+survivor leaves of the preceding run.  To obtain a single auditable certificate
+for the whole root domain, one should assemble the chain by replacing survivors
+at each stage, then run \code{./fence\_validate --verify} with the same
+certificate options and sufficient precision.  The recorded statistics above
+are the local statistics of the refinement steps and the postprocessed
+survivor analysis.
+
+\section{Limitations and Soundness Notes}
+
+\begin{itemize}
+  \item Certification is based on upper bounds for the shortest fence.  A
+  certified box proves ``below threshold'', while a survivor only means that
+  the current upper-bound enclosures were not tight enough to certify.
+
+  \item Status \code{nonoptimal} is not an upper-bound statement.  It certifies
+  failure of the opposite-pair equality necessary condition for an optimizer.
+  Conclusions that use \code{nonoptimal} boxes should be stated as exclusion of
+  possible optimizers, not as pointwise low-fence bounds.
+
+  \item Status \code{flat\_area} is an upper-bound statement.  It uses
+  \(L_{AB,CD}/\sqrt A\le 2\sqrt A\) and \(A_{\rm ub}\le\theta^2/4\) to prove
+  the box below threshold.
+
+  \item Coarse boxes near degeneracies can have very wide interval enclosures.
+  This is intentional: non-finite or loose enclosures force splitting or
+  survival, never false certification.
+
+  \item The JSONL enclosure printed in a certificate is diagnostic.  The
+  verifier ignores the recorded enclosure and recomputes claims from the box,
+  threshold, form, half-domain flag, and precision.
+
+  \item A run stopped by \code{--max-leaves} is useful for debugging but is not
+  a complete certificate and should fail the full coverage check.
+
+  \item Parallel execution uses a shared stack, so output order may vary.  The
+  verifier sorts leaves and checks dyadic coverage, so certificate correctness
+  does not depend on output order.
+\end{itemize}
+
+\end{document}
