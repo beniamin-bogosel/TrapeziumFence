@@ -230,6 +230,12 @@ Machine used for the timings:
 - CPU: Intel Core i7-9750H @ 2.60 GHz, 6 cores / 12 threads
 - Memory: 31 GiB RAM, 29 GiB swap
 - Compiler: Ubuntu GCC `13.3.0`
+- FLINT: `3.0.1` through the merged FLINT 3 Arb layout
+  (`<flint/arb.h>`, linked with `-lflint`)
+- MPFR: `4.2.1`
+- GMP: `6.3.0`
+- Python: `3.12.9`
+- pdfTeX: `3.141592653-2.6-1.40.25`, TeX Live 2023/Debian
 - Build/run mode: single-threaded (`make OMP=0`, `--serial`)
 
 Build:

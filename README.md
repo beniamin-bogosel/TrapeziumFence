@@ -61,7 +61,10 @@ nonoptimal.
 
 ## Build
 
-Requires FLINT/arb, MPFR, and GMP.
+Requires FLINT/arb, MPFR, and GMP.  The recorded runs used FLINT `3.0.1`
+with Arb through the merged FLINT 3 layout (`<flint/arb.h>`), MPFR `4.2.1`,
+GMP `6.3.0`, GCC `13.3.0`, Python `3.12.9`, and pdfTeX from TeX Live
+2023/Debian.
 
 ```
 make OMP=0      # deterministic single-threaded build
