@@ -23,14 +23,15 @@ longest-edge normalization does not lose generality.
 
 ## What Is Certified
 
-For each box in `(c1,c2,d1,d2)`, the program evaluates six rigorous upper
-bounds for the normalized shortest fence:
+For each box in `(c1,c2,d1,d2)`, the program evaluates six rigorous
+enclosures of explicit fence-construction values:
 
-- four vertex-angle bounds;
-- two opposite-side pair bounds, using a parallel-safe formula near parallel
-  side pairs.
+- four vertex-angle candidates;
+- two exact opposite-side pair candidates, using a parallel-safe formula near
+  parallel side pairs.
 
-Let `f = min(six upper bounds)`.  If interval arithmetic proves
+Each candidate value is an upper bound for the true shortest fence, so
+`f = min(six candidate values)` is also an upper bound.  If interval arithmetic proves
 `f_hi <= theta` on a box, then every admissible quadrilateral in that box has
 normalized shortest fence value at most `theta`.  Such a box is written as
 `"certified"`.
@@ -39,9 +40,9 @@ Two optional certificates are also available:
 
 - `--flat-area-cert`: certifies low boxes using
   `L_AB,CD / sqrt(area) <= 2 sqrt(area)`;
-- `--pair-eq-cert`: certifies `nonoptimal` boxes when the two opposite-pair
-  fence intervals are disjoint, violating a necessary equality condition for
-  an optimizer.
+- `--pair-eq-cert`: certifies `nonoptimal` boxes when the two exact
+  opposite-pair candidate intervals are disjoint, violating a necessary
+  equality condition for an optimizer.
 
 The output is therefore an exclusion certificate:
 
@@ -125,8 +126,8 @@ Important options:
 - Centered and natural enclosures are intersected when possible; if finite
   enclosures ever fail to overlap, their interval hull is used conservatively.
 - Post-processing reports only certified-low regions and unresolved survivors.
-  It does not treat lower bounds on `min(upper bounds)` as lower bounds for the
-  true shortest fence.
+  It does not treat lower bounds on `min(candidate values)` as lower bounds for
+  the true shortest fence.
 
 ## Reference Point
 

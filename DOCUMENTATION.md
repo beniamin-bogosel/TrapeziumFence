@@ -11,11 +11,14 @@ threshold experiment.
   enclosures.
 - `series.h`, `series.c`: rigorous enclosures for `gamma/sin(gamma)` and its
   derivative in the parallel-safe opposite-pair bound.
-- `functionals.h`, `functionals.c`: the six upper-bound functionals.  In
-  centered mode, natural and mean-value enclosures are intersected when they
-  overlap; their hull is used if finite enclosures ever disagree.  The module
-  also provides `functionals_opposite_pairs_disjoint`, the optional
-  nonoptimality test based on the two opposite-pair fences.
+- `functionals.h`, `functionals.c`: the six explicit fence-construction
+  candidates.  Each candidate gives an upper bound for the true shortest fence;
+  items 4 and 5 are exact opposite-pair construction values, which is essential
+  for the pair-equality certificate.  In centered mode, natural and mean-value
+  enclosures are intersected when they overlap; their hull is used if finite
+  enclosures ever disagree.  The module also provides
+  `functionals_opposite_pairs_disjoint`, the optional nonoptimality test based
+  on the two exact opposite-pair fences.
 - `admissible.h`, `admissible.c`: conservative discard tests for boxes that
   certainly contain no normalized admissible quadrilateral, plus
   `box_small_area_certifies_low`, the flat/small-area low-fence certificate.
@@ -133,13 +136,14 @@ one D rectangle gives `4 * 4 = 16` four-dimensional cells.
 ### Pair-Equality Nonoptimality
 
 At an actual optimizer, the two fence constructions associated to the two pairs
-of opposite sides must have equal value.  The code encloses the two
-opposite-pair items.  If both enclosures are finite and disjoint, the box is
-written as `nonoptimal`.
+of opposite sides must have equal value.  The code encloses the two exact
+opposite-pair candidate values.  If both enclosures are finite and disjoint,
+the box is written as `nonoptimal`.
 
 This certificate is useful because it removes boxes where the current
-upper-bound envelope is too wide to certify low, but where the necessary
-optimality condition is already impossible.
+candidate-value envelope is too wide to certify low, but where the necessary
+optimality condition is already impossible.  Its soundness relies on items 4
+and 5 being exact pair-construction values, not arbitrary upper majorants.
 
 ### Flat/Small-Area Low Certificate
 

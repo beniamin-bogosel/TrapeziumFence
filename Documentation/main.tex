@@ -76,14 +76,16 @@ convex quadrilaterals whose non-base side lengths are at most \(1\):
   |BC|\le 1,\qquad |CD|\le 1,\qquad |DA|\le 1.
 \]
 
-For a quadrilateral \(Q=ABCD\), the code computes six scale-invariant upper
-bounds \(F_i(Q)\) for the normalized shortest fence value:
+For a quadrilateral \(Q=ABCD\), the code computes six scale-invariant
+fence-construction candidate values \(F_i(Q)\).  Each candidate value is an
+upper bound for the normalized shortest fence value, so
 \[
   f(Q) \le \min_{0\le i<6} F_i(Q).
 \]
-The six items are four vertex-angle bounds and two opposite-edge-pair bounds.
-A box is certified below \(\theta\) when interval arithmetic proves that the
-upper endpoint of an enclosure for \(\min_i F_i\) is at most \(\theta\).
+The six items are four vertex-angle candidates and two exact opposite-edge-pair
+candidates.  A box is certified below \(\theta\) when interval arithmetic proves
+that the upper endpoint of an enclosure for \(\min_i F_i\) is at most
+\(\theta\).
 Consequently, certified boxes are one-sided exclusions for the problem
 \(f(Q)>\theta\): they prove that no admissible quadrilateral in the box has
 normalized shortest fence value above the threshold.
@@ -102,9 +104,11 @@ The C implementation is arranged in layers:
   parallel-safe opposite-pair formula near \(\gamma=0\).
 
   \item[\code{functionals.c}, \code{functionals.h}] Construction of the six
-  upper-bound functionals, natural and centered interval enclosures, the
-  minimum envelope used by certification, and the optional
+  explicit fence-construction candidates, natural and centered interval
+  enclosures, the minimum envelope used by certification, and the optional
   \code{functionals\_opposite\_pairs\_disjoint} nonoptimality certificate.
+  Items 4 and 5 are exact opposite-pair construction values, not arbitrary
+  majorants; the nonoptimality certificate relies on this contract.
 
   \item[\code{admissible.c}, \code{admissible.h}] Conservative interval tests
   that discard boxes containing no admissible normalized quadrilateral, plus
@@ -242,8 +246,8 @@ For a box \(X\), the search applies the following logic:
   condition, but is not by itself a low-fence claim.
 
   \item Otherwise, \code{functionals\_min} computes an interval enclosure
-  \([f_{\mathrm{lo}},f_{\mathrm{hi}}]\) for the minimum of the six upper-bound
-  items.  If the enclosure is finite and \(f_{\mathrm{hi}}\le\theta\), the leaf
+  \([f_{\mathrm{lo}},f_{\mathrm{hi}}]\) for the minimum of the six candidate
+  values.  If the enclosure is finite and \(f_{\mathrm{hi}}\le\theta\), the leaf
   is written with status \code{certified}.
 
   \item If the box is not certified and its largest scaled width is at most
@@ -309,17 +313,19 @@ configurations.
 
 \subsection{Opposite-Pair Equality}
 
-The two opposite-pair items correspond to the fence constructions associated to
+The two opposite-pair candidate values are exact fence-construction values for
 the pairs \((AB,CD)\) and \((BC,DA)\).  A theoretical necessary condition for
 optimality is that these two fences agree at an optimizer.  The optional
 certificate \code{--pair-eq-cert} evaluates interval enclosures for the two
-opposite-pair items.  If the finite intervals are disjoint, then no point in
-the box can satisfy the equality condition, and the box is written with status
-\code{nonoptimal}.
+exact opposite-pair candidate values.  If the finite intervals are disjoint,
+then no point in the box can satisfy the equality condition, and the box is
+written with status \code{nonoptimal}.
 
 This certificate is independent of the threshold \(\theta\).  It removes
 regions that cannot contain a maximizing quadrilateral even when the current
-upper-bound envelope is too wide to certify \(f(Q)\le\theta\).
+candidate-value envelope is too wide to certify \(f(Q)\le\theta\).  This use is
+sound only because items 4 and 5 enclose exact pair-construction values, not
+loose upper majorants.
 
 \subsection{Flat and Small-Area Estimate}
 
@@ -400,9 +406,9 @@ becomes indeterminate, the value interval is clamped conservatively to
 \([0,\pi]\), and derivative information is treated as indeterminate.  In
 centered mode this forces a conservative fallback to the natural enclosure.
 
-\subsection{Opposite-Pair Bounds}
+\subsection{Opposite-Pair Candidates}
 
-There are two opposite-pair items: \((AB,CD)\) and \((BC,DA)\).  Let the two
+There are two exact opposite-pair candidate values: \((AB,CD)\) and \((BC,DA)\).  Let the two
 supporting line directions make acute angle \(\gamma\in[0,\pi/2]\), and let
 \(A_Q=\Area(ABCD)\).  The implementation uses two algebraically identical
 formulas.
@@ -505,12 +511,12 @@ Function & Purpose \\
 vbound & Static helper for the vertex bound \(\sqrt{\angle PVQ}\). \\
 pdist & Static helper for the distance from a point to a line, used in the parallel-safe pair formula. \\
 tri\_area & Static helper for triangle area \( \frac12 |(Q-P)\times(O-P)| \). \\
-pair\_bound & Static helper implementing the opposite-pair bound.  It selects the apex formula or the parallel-safe formula unless a test forces one. \\
-compute\_items & Static builder for the six item jets from the four coordinate jets.  It also constructs the quadrilateral area \(A_Q=(c_2+c_1d_2-d_1c_2)/2\). \\
-functionals\_eval & Public routine that encloses all six items on a coordinate box, in natural or centered form. \\
-functionals\_pair\_forced & Test hook that evaluates one pair item at a point while forcing the apex or parallel-safe formula. \\
-functionals\_min & Encloses the minimum envelope over the six items.  Non-finite item enclosures are ignored; if all six are non-finite, the result is \(+\infty\), so the search cannot certify the box. \\
-functionals\_opposite\_pairs\_disjoint & Encloses the two opposite-pair items and returns true only when both finite intervals are disjoint, certifying failure of the pair-equality necessary condition for optimality. \\
+pair\_bound & Static helper implementing the exact opposite-pair candidate value.  It selects the apex formula or the parallel-safe formula unless a test forces one; both formulas represent the same construction. \\
+compute\_items & Static builder for the six candidate-value jets from the four coordinate jets.  It also constructs the quadrilateral area \(A_Q=(c_2+c_1d_2-d_1c_2)/2\). \\
+functionals\_eval & Public routine that encloses all six candidate values on a coordinate box, in natural or centered form. \\
+functionals\_pair\_forced & Test hook that evaluates one pair candidate at a point while forcing the apex or parallel-safe formula. \\
+functionals\_min & Encloses the minimum envelope over the six candidate values.  Non-finite item enclosures are ignored; if all six are non-finite, the result is \(+\infty\), so the search cannot certify the box. \\
+functionals\_opposite\_pairs\_disjoint & Encloses the two exact opposite-pair candidate values and returns true only when both finite intervals are disjoint, certifying failure of the pair-equality necessary condition for optimality. \\
 \bottomrule
 \end{longtable}
 
@@ -641,14 +647,14 @@ The executable is \code{fence\_validate}.  The principal options are:
   \item[\code{--half}] Use the optional reflection half-domain \(c_1+d_1\ge1\).
   \item[\code{--serial}] Force single-threaded execution.
   \item[\code{--adaptive}] Retry marginal unresolved boxes at higher precision.
-  \item[\code{--pair-eq-cert}] Certify boxes as \code{nonoptimal} when the two opposite-pair fence intervals are disjoint.
+  \item[\code{--pair-eq-cert}] Certify boxes as \code{nonoptimal} when the two exact opposite-pair candidate intervals are disjoint.
   \item[\code{--flat-area-cert}] Certify boxes as \code{flat\_area} when the small-area estimate proves normalized fence value below \(\theta\).
   \item[\code{--max-leaves N}] Debugging cap.  Output from capped runs should not be treated as a complete certificate.
   \item[\code{--out FILE}] Write a JSONL certificate stream.
   \item[\code{--stats}] Print summary statistics.
   \item[\code{--verify FILE}] Re-check metadata, local claims, and full dyadic coverage.  The file supplies \(\theta\), \code{form}, and \code{half}; command-line values for those fields are optional consistency checks.
   \item[\code{--assemble FILE... --out OUT}] Assemble a base certificate and refinement files into one full-domain certificate.
-  \item[\code{--eval c1 c2 d1 d2}] Print the six items and minimum at a point.
+  \item[\code{--eval c1 c2 d1 d2}] Print the six candidate values and minimum at a point.
   \item[\code{--refine FILE}] Seed the search from survivor boxes in a previous certificate.
 \end{description}
 
@@ -837,11 +843,12 @@ metadata rather than used to define the certificate claim.
 \begin{itemize}
   \item Certification is based on upper bounds for the shortest fence.  A
   certified box proves ``below threshold'', while a survivor only means that
-  the current upper-bound enclosures were not tight enough to certify.
+  the current candidate-value enclosures were not tight enough to certify.
 
   \item Status \code{nonoptimal} is not an upper-bound statement.  It certifies
   failure of the opposite-pair equality necessary condition for an optimizer.
-  Conclusions that use \code{nonoptimal} boxes should be stated as exclusion of
+  This is valid because the two pair intervals enclose exact pair-construction
+  values.  Conclusions that use \code{nonoptimal} boxes should be stated as exclusion of
   possible optimizers, not as pointwise low-fence bounds.
 
   \item Status \code{flat\_area} is an upper-bound statement.  It uses

@@ -1,13 +1,14 @@
-/* functionals.c -- the six fence bounds as jets, with natural/centered
- * enclosures.  All arithmetic is rigorous arb; floating point only guides the
- * Form1/Form2 branch choice (both forms are exact and equal). */
+/* functionals.c -- the six fence candidate values as jets, with
+ * natural/centered enclosures.  All arithmetic is rigorous arb; floating point
+ * only guides the Form1/Form2 branch choice for the exact opposite-pair
+ * formulas (both forms are exact and equal). */
 #include "functionals.h"
 #include "series.h"
 #include <string.h>
 
 /* ---------- small jet helpers ---------- */
 
-/* out = sqrt( atan2( |cross(P-V,Q-V)|, dot(P-V,Q-V) ) )  -- a vertex bound. */
+/* out = sqrt( atan2( |cross(P-V,Q-V)|, dot(P-V,Q-V) ) ) -- vertex candidate. */
 static void vbound(jet *out, const jpt *V, const jpt *P, const jpt *Q, slong prec) {
     jpt u, w;
     jet cr, dt, acr, ang;
@@ -71,8 +72,8 @@ static void tri_area(jet *out, const jpt *P, const jpt *Q, const jpt *O, slong p
     jet_clear(&cr); jet_clear(&acr);
 }
 
-/* Opposite-pair bound.  Pair lines: L1 through A1 with direction d1v, L2 through
- * A2 with direction d2v.  The two non-pair edges are edge a = (ea_l1 on L1,
+/* Exact opposite-pair fence candidate.  Pair lines: L1 through A1 with direction
+ * d1v, L2 through A2 with direction d2v.  The two non-pair edges are edge a = (ea_l1 on L1,
  * ea_l2 on L2) and edge b = (eb_l1 on L1, eb_l2 on L2).  AQ = quad area.
  *
  *  gamma = atan2(|d1 x d2|, |d1 . d2|)  in [0, pi/2].
@@ -82,6 +83,10 @@ static void tri_area(jet *out, const jpt *P, const jpt *Q, const jpt *O, slong p
  *     Fpair^2 = (gamma/sin gamma) (prodA + prodB) / (2 AQ),
  *     prodX = d(X_L1, L2) d(X_L2, L1).
  *  The two forms are algebraically identical (see README); out = sqrt(Fpair^2).
+ *
+ *  Do not replace this by a mere upper majorant while --pair-eq-cert uses
+ *  disjointness of items 4 and 5: that certificate requires enclosures of the
+ *  exact pair-construction values.
  */
 /* force: -1 = auto (branch on inf gamma), 0 = Form1, 1 = Form2 (for tests). */
 static void pair_bound(jet *out,
@@ -171,7 +176,7 @@ static void pair_bound(jet *out,
     jet_clear(&gamma); jet_clear(&fp2);
 }
 
-/* Build the six item jets from the four seeded coordinate jets. */
+/* Build the six candidate-value jets from the four seeded coordinate jets. */
 static void compute_items(jet item[6], const jet var[4], slong prec) {
     jpt A, B, C, D;
     jpt_init(&A); jpt_init(&B); jpt_init(&C); jpt_init(&D);
@@ -191,7 +196,7 @@ static void compute_items(jet item[6], const jet var[4], slong prec) {
     for (int k = 0; k < TRAP_NV; k++) arb_mul_2exp_si(AQ.d[k], AQ.d[k], -1);
     jet_clear(&t1); jet_clear(&t2);
 
-    /* vertex bounds: at V, edges to its two neighbours */
+    /* vertex candidates: at V, edges to its two neighbours */
     vbound(&item[0], &A, &D, &B, prec);   /* vertex A: neighbours D,B */
     vbound(&item[1], &B, &A, &C, prec);   /* vertex B: neighbours A,C */
     vbound(&item[2], &C, &B, &D, prec);   /* vertex C: neighbours B,D */
