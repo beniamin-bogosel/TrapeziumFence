@@ -974,7 +974,7 @@ static int load_records(const char *path, cert_record **out, long *nout,
         free_records(rec, n);
         return 1;
     }
-    if (meta->schema != 2 || !meta_root_current(meta)) {
+    if (meta->schema != 3 || !meta_root_current(meta)) {
         fprintf(stderr, "FAIL[meta]: unsupported metadata in %s\n", path);
         free_records(rec, n);
         return 1;
