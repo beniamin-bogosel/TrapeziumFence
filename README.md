@@ -76,8 +76,7 @@ Example:
 ./fence_validate --theta 1.04 --wfloor 0.05 --prec 53 \
   --form centered --serial --out cert_104.jsonl --stats
 
-./fence_validate --verify cert_104.jsonl --theta 1.04 \
-  --prec 80 --form centered --serial
+./fence_validate --verify cert_104.jsonl --prec 80 --serial
 
 python3 analyze_cert.py cert_104.jsonl --theta 1.04
 ```
@@ -89,8 +88,7 @@ whole-domain verification:
 ./fence_validate --assemble base.jsonl refine1.jsonl refine2.jsonl \
   --out assembled_full.jsonl
 
-./fence_validate --verify assembled_full.jsonl --theta 1.04 \
-  --prec 80 --form centered --serial
+./fence_validate --verify assembled_full.jsonl --prec 80 --serial
 ```
 
 Important options:
@@ -101,9 +99,11 @@ Important options:
 - `--form natural|centered`: direct interval extension or mean-value form.
 - `--flat-area-cert`: apply the small-area low-fence certificate.
 - `--pair-eq-cert`: apply the opposite-pair equality nonoptimality certificate.
-- `--verify FILE`: independently re-checks local claims and proves the JSONL
-  leaves tile the full root box.  Incomplete coverage now fails immediately
-  with the first missing dyadic child.
+- `--verify FILE`: independently re-checks metadata, local claims, and proves
+  the JSONL leaves tile the full root box.  The certificate stores `theta`,
+  `form`, `half`, and root-domain provenance; command-line values for those
+  fields are optional cross-checks, not the source of the claim.  Incomplete
+  coverage now fails immediately with the first missing dyadic child.
 - `--assemble FILE... --out OUT`: replace survivor leaves through a refinement
   chain and write one full-domain certificate.
 - `--max-leaves N`: debugging limit only; a truncated run will not pass full
@@ -113,6 +113,9 @@ Important options:
 
 - Certificate verification now checks the complete dyadic partition of the root
   box, not just each JSON line in isolation, and fails fast on missing regions.
+- Certificate files are self-describing: the verifier rejects missing metadata
+  and rejects command-line `theta`, `form`, or `half` values that disagree with
+  the file.
 - Refinement files can be assembled with `--assemble`; each refinement is
   structurally checked against the survivor boxes it replaces.
 - Centered and natural enclosures are intersected when possible; if finite

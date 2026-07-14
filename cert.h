@@ -1,6 +1,10 @@
 /* cert.h -- JSONL certificate stream writer and stateless re-check reader.
  *
- * One JSON line per leaf:
+ * The first JSON line is metadata:
+ *   {"type":"meta","schema":2,"theta":<double>,"form":"natural|centered",
+ *    "half":true|false, ...}
+ *
+ * Subsequent JSON lines contain one leaf each:
  *   {"box":[[lo,hi],[lo,hi],[lo,hi],[lo,hi]],
  *    "status":"discarded|certified|flat_area|nonoptimal|survivor",
  *    "item":<int, -1 if none>,
@@ -21,17 +25,21 @@
 /* Writer context: pass as the leaf_fn ctx. */
 typedef struct { FILE *fp; } cert_writer;
 
+/* Write the self-describing certificate metadata line. */
+void cert_write_meta(FILE *fp, const search_params *p);
+
 /* leaf_fn compatible callback that writes one JSONL line. */
 void cert_write_leaf(void *ctx, const double lo[4], const double hi[4],
                      int status, int item, const arb_t encl, slong prec);
 
 /* Re-check a complete certificate file statelessly.
- *   theta, form, half : the claimed run parameters;
+ *   theta/form/half, when *_set is true, are checked against the file metadata;
  *   prec              : precision to re-verify at (may differ from the file);
  * Returns 0 if every leaf's claim holds, else the number of failures.
  * Prints a summary to stdout. */
-int cert_verify(const char *path, double theta, enclosure_form form,
-                int half, slong prec);
+int cert_verify(const char *path, double theta, int theta_set,
+                enclosure_form form, int form_set,
+                int half, int half_set, slong prec);
 
 /* Load the survivor boxes of a certificate into freshly-malloc'd arrays
  * (*lo)[4] / (*hi)[4]; returns their count (0 on error; caller frees). */

@@ -36,7 +36,7 @@ static void usage(const char *prog) {
 "  --max-leaves N   debugging cap; truncated output will not verify fully\n"
 "  --out FILE       write JSONL certificate stream\n"
 "  --stats          print summary statistics\n"
-"  --verify FILE    re-check local claims and full dyadic coverage\n"
+"  --verify FILE    re-check metadata, local claims, and full dyadic coverage\n"
 "  --assemble FILE [FILE ...]\n"
 "                   assemble base/refinement certificates into one full JSONL\n"
 "                   certificate; requires --out FILE\n"
@@ -68,6 +68,7 @@ int main(int argc, char **argv) {
     size_t n_assemble = 0;
     int do_stats = 0;
     int do_eval = 0;
+    int theta_set = 0, form_set = 0, half_set = 0;
     double evalpt[4] = {0, 0, 0, 0};
 
     if (!assemble_paths) {
@@ -76,7 +77,10 @@ int main(int argc, char **argv) {
     }
 
     for (int i = 1; i < argc; i++) {
-        if (!strcmp(argv[i], "--theta") && i + 1 < argc) p.theta = atof(argv[++i]);
+        if (!strcmp(argv[i], "--theta") && i + 1 < argc) {
+            p.theta = atof(argv[++i]);
+            theta_set = 1;
+        }
         else if (!strcmp(argv[i], "--wfloor") && i + 1 < argc) p.wfloor = atof(argv[++i]);
         else if (!strcmp(argv[i], "--prec") && i + 1 < argc) p.prec = atol(argv[++i]);
         else if (!strcmp(argv[i], "--maxprec") && i + 1 < argc) p.maxprec = atol(argv[++i]);
@@ -85,8 +89,12 @@ int main(int argc, char **argv) {
             if (!strcmp(f, "natural")) p.form = FORM_NATURAL;
             else if (!strcmp(f, "centered")) p.form = FORM_CENTERED;
             else { fprintf(stderr, "unknown --form %s\n", f); return 2; }
+            form_set = 1;
         }
-        else if (!strcmp(argv[i], "--half")) p.half = 1;
+        else if (!strcmp(argv[i], "--half")) {
+            p.half = 1;
+            half_set = 1;
+        }
         else if (!strcmp(argv[i], "--serial")) p.serial = 1;
         else if (!strcmp(argv[i], "--adaptive")) p.adaptive_prec = 1;
         else if (!strcmp(argv[i], "--pair-eq-cert")) p.pair_eq_cert = 1;
@@ -152,7 +160,8 @@ int main(int argc, char **argv) {
     }
 
     if (verify_path) {
-        int fails = cert_verify(verify_path, p.theta, p.form, p.half, p.prec);
+        int fails = cert_verify(verify_path, p.theta, theta_set,
+                                p.form, form_set, p.half, half_set, p.prec);
         series_cleanup();
         return fails ? 1 : 0;
     }
@@ -163,6 +172,7 @@ int main(int argc, char **argv) {
     if (out_path) {
         out = fopen(out_path, "w");
         if (!out) { fprintf(stderr, "cannot open %s for writing\n", out_path); return 2; }
+        cert_write_meta(out, &p);
         w.fp = out;
         cb = cert_write_leaf;
     }

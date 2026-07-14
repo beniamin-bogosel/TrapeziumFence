@@ -2,6 +2,12 @@
 
 Date: 2026-07-13
 
+Note: current certificates are self-describing.  A JSONL certificate begins
+with a metadata line recording `theta`, `form`, `half`, auxiliary flags,
+precision provenance, and the root box.  `--verify` reads those values from the
+file; passing `--theta`, `--form`, or `--half` during verification is now only
+a consistency check.
+
 Folder:
 
 ```sh
@@ -117,8 +123,7 @@ Whole-domain verification:
 
 ```sh
 ./fence_validate --verify flat_pair_full_w0003125.jsonl \
-  --theta 1.0496 --prec 70 --form centered --serial \
-  --flat-area-cert --pair-eq-cert
+  --prec 70 --serial
 ```
 
 Verified output:

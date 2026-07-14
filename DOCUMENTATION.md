@@ -27,11 +27,12 @@ threshold experiment.
   certified nonoptimal by pair-fence disagreement, or retained as an unresolved
   survivor once it reaches `wfloor`.
 - `cert.h`, `cert.c`: JSONL writer, verifier, and assembler.  Verification
-  recomputes all local claims and checks that the certificate leaves tile the
-  full root box exactly according to the same dyadic splitting rule.  Missing
-  dyadic children fail immediately instead of triggering deep subdivision.
-  Assembly replaces survivor leaves through a refinement chain and writes one
-  full-domain certificate.
+  first checks the self-describing metadata line, then recomputes all local
+  claims and checks that the certificate leaves tile the full root box exactly
+  according to the same dyadic splitting rule.  Missing dyadic children fail
+  immediately instead of triggering deep subdivision.  Assembly replaces
+  survivor leaves through a refinement chain and writes one full-domain
+  certificate, after checking that all inputs have compatible metadata.
 - `fence_validate.c`: CLI entry point.
 
 ## Tools
@@ -46,6 +47,14 @@ threshold experiment.
   including fast failure on a missing certificate leaf.
 
 ## Certificate Reading
+
+Every certificate begins with a metadata JSON line recording the schema,
+threshold `theta`, enclosure `form`, `half` flag, auxiliary-certificate flags,
+run precision, and root box.  The verifier reads `theta`, `form`, and `half`
+from this line.  Supplying those options to `--verify` is now only a
+cross-check; a mismatch is reported as `FAIL[meta]`.  Old JSONL files without
+metadata must be regenerated or assembled with the current program before they
+can be audited.
 
 For a threshold `theta`, a verified certificate proves:
 
@@ -282,8 +291,7 @@ Then audit the assembled certificate:
 
 ```sh
 ./fence_validate --verify flat_pair_full_w0003125.jsonl \
-  --theta 1.0496 --prec 70 --form centered --serial \
-  --flat-area-cert --pair-eq-cert
+  --prec 70 --serial
 ```
 
 Recorded assembled audit:
@@ -311,6 +319,8 @@ the independent nonoptimality certificate.
 
 The refinement files listed above are incremental.  Use `--assemble` to obtain
 a single auditable certificate for the whole root domain, then run
-`./fence_validate --verify` on the assembled JSONL file with the same flags and
-sufficient precision.  Verifying a refinement-only file as a full certificate
+`./fence_validate --verify` on the assembled JSONL file with sufficient
+precision.  The assembled file carries the certified `theta`, `form`, and
+`half` values in its metadata; passing them again is optional and acts only as
+a consistency check.  Verifying a refinement-only file as a full certificate
 now fails immediately with a missing-child coverage error.

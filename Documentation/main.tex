@@ -33,7 +33,7 @@
 \newcommand{\AB}{\overline{AB}}
 \newcommand{\Area}{\operatorname{Area}}
 
-\title{Interval Verification Documentation for \code{TrapeziumGPT}}
+\title{Interval Verification Documentation for \code{TrapeziumFence}}
 \author{}
 \date{July 2026}
 
@@ -42,7 +42,7 @@
 
 \begin{abstract}
 This document describes the architecture, verification logic, functions, and
-recorded experiments for the \code{TrapeziumGPT} package.  The package verifies
+recorded experiments for the \code{TrapeziumFence} package.  The package verifies
 upper bounds for the normalized shortest equal-area fence in convex
 quadrilaterals and also records necessary-condition exclusions for optimality.
 The search subdivides a four-dimensional rectangle of coordinates for the two
@@ -50,7 +50,8 @@ free vertices \(C,D\).  Each leaf rectangle is either discarded as certainly
 inadmissible, certified as having a shortest fence value below a threshold
 \(\theta\), certified nonoptimal by the opposite-pair equality condition, or
 retained as an unresolved survivor.  The certificate verifier re-checks both
-the local leaf claims and the global dyadic tiling of the original domain.
+the metadata, local leaf claims, and global dyadic tiling of the original
+domain.
 \end{abstract}
 
 \tableofcontents
@@ -115,10 +116,12 @@ The C implementation is arranged in layers:
   refinement run from previous survivors.
 
   \item[\code{cert.c}, \code{cert.h}] JSONL certificate writer, stateless
-  certificate verifier, and certificate assembler.  The verifier recomputes
-  local claims and checks that all leaves tile the original domain by the same
-  dyadic splitting rule.  Missing dyadic children fail immediately.  The
-  assembler replaces survivor leaves through a refinement chain.
+  certificate verifier, and certificate assembler.  The verifier first checks
+  the self-describing metadata line, then recomputes local claims and checks
+  that all leaves tile the original domain by the same dyadic splitting rule.
+  Missing dyadic children fail immediately.  The assembler replaces survivor
+  leaves through a refinement chain and checks metadata compatibility across
+  the chain.
 
   \item[\code{fence_validate.c}] Command-line front end for searching,
   refining, verifying, and evaluating a point.
@@ -250,6 +253,25 @@ The search can be restarted from survivors by passing \code{--refine FILE}.
 Refinement outputs are partial certificates.  Use \code{--assemble} to replace
 survivor leaves stage by stage and produce a complete certificate for the
 original root box.
+
+\subsection{Self-Describing Certificate Metadata}
+
+Every JSONL certificate begins with a metadata line of schema version \(2\).
+It records the threshold \(\theta\), enclosure form, half-domain flag,
+auxiliary-certificate flags, precision provenance, root box, and splitter
+spans.  Leaf lines follow this first line.
+
+The verifier reads \(\theta\), \code{form}, and \code{half} from the file.
+Supplying \code{--theta}, \code{--form}, or \code{--half} during
+\code{--verify} is only a cross-check: if a command-line value disagrees with
+the certificate metadata, verification fails with \code{FAIL[meta]}.  This
+prevents a certificate for one threshold from being silently audited as a
+different, usually weaker, statement.
+
+The assembler requires metadata in every input file and checks that the global
+claim parameters are compatible before it replaces survivor leaves.  Old JSONL
+files without metadata must be regenerated with the current program before
+they can be audited or assembled.
 
 \subsection{Certificate Semantics}
 
@@ -526,14 +548,16 @@ Function & Purpose \\
 \midrule
 \endhead
 status\_name & Static conversion from leaf status enum to JSON status string. \\
+cert\_write\_meta & Writes the schema-2 metadata line containing threshold, form, half-domain flag, auxiliary flags, precision provenance, root box, and splitter spans. \\
 cert\_write\_leaf & Leaf callback that writes one JSON line containing box, status, active item, enclosure, and precision. \\
-parse\_line & Static parser for the simple JSONL certificate format. \\
+parse\_meta\_line & Static parser for the metadata JSON line. \\
+parse\_line & Static parser for certificate leaf JSON lines. \\
 parse\_status & Static parser for status strings; accepts \code{low} as an alias for \code{certified}, and recognizes \code{flat\_area} and \code{nonoptimal}. \\
 cmp\_double & Static total ordering helper for doubles used in sorting boxes. \\
 cmp\_box\_arrays & Static lexicographic comparison of box endpoints. \\
 leaf\_cmp & Static comparator for sorting certificate leaves. \\
-find\_leaf & Static binary search for an exact dyadic box in the sorted certificate array. \\
 widest\_coord\_cert & Static copy of the deterministic splitting rule used by the verifier. \\
+meta\_compatible & Static check that two certificate files assert the same global claim parameters before assembly. \\
 verify\_leaf\_claim & Static local audit of one leaf: discarded boxes must still be certainly inadmissible; certified and flat-area boxes must recompute below \(\theta\); nonoptimal boxes must recompute disjoint opposite-pair intervals; survivors require no value claim. \\
 verify\_cover\_node\_slice & Static recursive tiling audit over the leaves contained in the current node.  Missing children fail immediately; the verifier no longer descends empty subtrees. \\
 cover\_node\_slice\_structure & Static structural tiling check used by assembly, without rechecking local analytic claims. \\
@@ -573,7 +597,7 @@ tests/test\_trap.c: test\_inadmissible & Checks conservative inadmissibility on 
 tests/test\_trap.c: test\_interior\_certify & Checks that an interior sub-threshold box certifies. \\
 tests/test\_trap.c: test\_pair\_equality\_certificate & Checks that a box with disjoint opposite-pair intervals is certified nonoptimal, while a small box around \(T^\ast\) is not rejected by this certificate. \\
 tests/test\_trap.c: test\_flat\_area\_certificate & Checks that small-area boxes are certified low and that a small box around \(T^\ast\) is not eliminated by the flat-area estimate. \\
-tests/test\_cert\_cli.sh & Builds a tiny certificate, verifies it, deletes one leaf, and checks that verification fails quickly with a coverage error. \\
+tests/test\_cert\_cli.sh & Builds a tiny certificate, verifies it from metadata alone, checks that a wrong command-line theta fails with \code{FAIL[meta]}, deletes one leaf, and checks that verification fails quickly with a coverage error. \\
 \bottomrule
 \end{longtable}
 
@@ -595,7 +619,7 @@ The executable is \code{fence\_validate}.  The principal options are:
   \item[\code{--max-leaves N}] Debugging cap.  Output from capped runs should not be treated as a complete certificate.
   \item[\code{--out FILE}] Write a JSONL certificate stream.
   \item[\code{--stats}] Print summary statistics.
-  \item[\code{--verify FILE}] Re-check a certificate.
+  \item[\code{--verify FILE}] Re-check metadata, local claims, and full dyadic coverage.  The file supplies \(\theta\), \code{form}, and \code{half}; command-line values for those fields are optional consistency checks.
   \item[\code{--assemble FILE... --out OUT}] Assemble a base certificate and refinement files into one full-domain certificate.
   \item[\code{--eval c1 c2 d1 d2}] Print the six items and minimum at a point.
   \item[\code{--refine FILE}] Seed the search from survivor boxes in a previous certificate.
@@ -754,8 +778,7 @@ leaves.  The assembled full-domain certificate was then audited by
 
 \begin{lstlisting}
 ./fence_validate --verify flat_pair_full_w0003125.jsonl \
-  --theta 1.0496 --prec 70 --form centered --serial \
-  --flat-area-cert --pair-eq-cert
+  --prec 70 --serial
 \end{lstlisting}
 
 with output
@@ -777,6 +800,10 @@ and the audit reported zero failures.
 Verifying a refinement-only file as a full certificate is now a fast structural
 failure: the verifier reports the first missing dyadic child instead of
 descending an empty subtree.
+
+The verification command may additionally include \code{--theta 1.0496} and
+\code{--form centered}; in the current code these are checked against the
+metadata rather than used to define the certificate claim.
 
 \section{Limitations and Soundness Notes}
 
@@ -800,7 +827,8 @@ descending an empty subtree.
 
   \item The JSONL enclosure printed in a certificate is diagnostic.  The
   verifier ignores the recorded enclosure and recomputes claims from the box,
-  threshold, form, half-domain flag, and precision.
+  the metadata threshold, metadata form, metadata half-domain flag, and the
+  requested verification precision.
 
   \item A run stopped by \code{--max-leaves} is useful for debugging but is not
   a complete certificate and should fail the full coverage check.

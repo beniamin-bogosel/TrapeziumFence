@@ -5,6 +5,176 @@
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
+#include <ctype.h>
+
+typedef struct {
+    int present;
+    int schema;
+    double theta;
+    enclosure_form form;
+    int half;
+    int pair_eq_cert;
+    int flat_area_cert;
+    slong run_prec;
+    int has_root;
+    double root_lo[4], root_hi[4];
+} cert_meta;
+
+static const char *form_name(enclosure_form form) {
+    return form == FORM_CENTERED ? "centered" : "natural";
+}
+
+static int parse_form_name(const char *s, enclosure_form *form) {
+    if (strcmp(s, "natural") == 0) {
+        *form = FORM_NATURAL;
+        return 1;
+    }
+    if (strcmp(s, "centered") == 0) {
+        *form = FORM_CENTERED;
+        return 1;
+    }
+    return 0;
+}
+
+static void cert_meta_init(cert_meta *m) {
+    memset(m, 0, sizeof(*m));
+    m->schema = -1;
+    m->run_prec = -1;
+}
+
+static const char *json_value(const char *line, const char *name) {
+    char key[64];
+    snprintf(key, sizeof key, "\"%s\"", name);
+    const char *p = strstr(line, key);
+    if (!p) return NULL;
+    p = strchr(p + strlen(key), ':');
+    if (!p) return NULL;
+    p++;
+    while (*p && isspace((unsigned char)*p)) p++;
+    return p;
+}
+
+static int json_string_field(const char *line, const char *name,
+                             char *out, size_t out_sz) {
+    const char *p = json_value(line, name);
+    if (!p || *p != '"' || out_sz == 0) return 0;
+    p++;
+    size_t n = 0;
+    while (*p && *p != '"') {
+        if (n + 1 < out_sz) out[n++] = *p;
+        p++;
+    }
+    if (*p != '"') return 0;
+    out[n] = '\0';
+    return 1;
+}
+
+static int json_double_field(const char *line, const char *name, double *out) {
+    const char *p = json_value(line, name);
+    char *end = NULL;
+    if (!p) return 0;
+    *out = strtod(p, &end);
+    return end && end != p;
+}
+
+static int json_long_field(const char *line, const char *name, long *out) {
+    const char *p = json_value(line, name);
+    char *end = NULL;
+    if (!p) return 0;
+    *out = strtol(p, &end, 10);
+    return end && end != p;
+}
+
+static int json_bool_field(const char *line, const char *name, int *out) {
+    const char *p = json_value(line, name);
+    if (!p) return 0;
+    if (strncmp(p, "true", 4) == 0) {
+        *out = 1;
+        return 1;
+    }
+    if (strncmp(p, "false", 5) == 0) {
+        *out = 0;
+        return 1;
+    }
+    if (*p == '0' || *p == '1') {
+        *out = (*p == '1');
+        return 1;
+    }
+    return 0;
+}
+
+static int json_root_field(const char *line, cert_meta *m) {
+    const char *p = json_value(line, "root");
+    if (!p) return 0;
+    if (sscanf(p, "[[%lg,%lg],[%lg,%lg],[%lg,%lg],[%lg,%lg]]",
+               &m->root_lo[0], &m->root_hi[0], &m->root_lo[1], &m->root_hi[1],
+               &m->root_lo[2], &m->root_hi[2], &m->root_lo[3], &m->root_hi[3]) != 8)
+        return 0;
+    m->has_root = 1;
+    return 1;
+}
+
+static int parse_meta_line(const char *line, cert_meta *m) {
+    char type[32];
+    if (!json_string_field(line, "type", type, sizeof type)) return 0;
+    if (strcmp(type, "meta") != 0) return 0;
+
+    cert_meta tmp;
+    cert_meta_init(&tmp);
+    tmp.present = 1;
+    char form[32];
+    long schema, run_prec;
+    if (!json_long_field(line, "schema", &schema) ||
+        !json_double_field(line, "theta", &tmp.theta) ||
+        !json_string_field(line, "form", form, sizeof form) ||
+        !parse_form_name(form, &tmp.form) ||
+        !json_bool_field(line, "half", &tmp.half) ||
+        !json_root_field(line, &tmp)) {
+        return -1;
+    }
+    tmp.schema = (int)schema;
+    if (json_bool_field(line, "pair_eq_cert", &tmp.pair_eq_cert) == 0)
+        tmp.pair_eq_cert = 0;
+    if (json_bool_field(line, "flat_area_cert", &tmp.flat_area_cert) == 0)
+        tmp.flat_area_cert = 0;
+    if (json_long_field(line, "run_prec", &run_prec))
+        tmp.run_prec = (slong)run_prec;
+    *m = tmp;
+    return 1;
+}
+
+static void cert_write_meta_struct(FILE *fp, const cert_meta *m) {
+    fprintf(fp,
+        "{\"type\":\"meta\",\"schema\":%d,\"theta\":%.17g,"
+        "\"form\":\"%s\",\"half\":%s,"
+        "\"pair_eq_cert\":%s,\"flat_area_cert\":%s,\"run_prec\":%ld,"
+        "\"root\":[[%.17g,%.17g],[%.17g,%.17g],[%.17g,%.17g],[%.17g,%.17g]],"
+        "\"split_spans\":[2,1,2,1]}\n",
+        m->schema, m->theta, form_name(m->form),
+        m->half ? "true" : "false",
+        m->pair_eq_cert ? "true" : "false",
+        m->flat_area_cert ? "true" : "false",
+        (long)m->run_prec,
+        m->root_lo[0], m->root_hi[0], m->root_lo[1], m->root_hi[1],
+        m->root_lo[2], m->root_hi[2], m->root_lo[3], m->root_hi[3]);
+}
+
+void cert_write_meta(FILE *fp, const search_params *p) {
+    if (!fp || !p) return;
+    cert_meta m;
+    cert_meta_init(&m);
+    m.present = 1;
+    m.schema = 2;
+    m.theta = p->theta;
+    m.form = p->form;
+    m.half = p->half;
+    m.pair_eq_cert = p->pair_eq_cert;
+    m.flat_area_cert = p->flat_area_cert;
+    m.run_prec = p->prec;
+    m.has_root = 1;
+    search_root_box(m.root_lo, m.root_hi);
+    cert_write_meta_struct(fp, &m);
+}
 
 static const char *status_name(int s) {
     switch (s) {
@@ -443,8 +613,60 @@ size_t cert_load_survivors(const char *path, double (**lo)[4], double (**hi)[4])
     return n;
 }
 
-int cert_verify(const char *path, double theta, enclosure_form form,
-                int half, slong prec) {
+static int close_double(double a, double b) {
+    double scale = fmax(1.0, fmax(fabs(a), fabs(b)));
+    return fabs(a - b) <= 1e-14 * scale;
+}
+
+static int meta_root_current(const cert_meta *m) {
+    if (!m->has_root) return 0;
+    double lo[4], hi[4];
+    search_root_box(lo, hi);
+    for (int k = 0; k < 4; k++) {
+        if (!close_double(m->root_lo[k], lo[k]) ||
+            !close_double(m->root_hi[k], hi[k]))
+            return 0;
+    }
+    return 1;
+}
+
+static int meta_compatible(const cert_meta *a, const cert_meta *b,
+                           const char *where) {
+    int fail = 0;
+    if (!a->present || !b->present) {
+        fprintf(stderr, "FAIL[meta]: missing metadata while checking %s\n", where);
+        return 1;
+    }
+    if (a->schema != b->schema) {
+        fprintf(stderr, "FAIL[meta]: schema mismatch in %s (%d vs %d)\n",
+                where, a->schema, b->schema);
+        fail = 1;
+    }
+    if (!close_double(a->theta, b->theta)) {
+        fprintf(stderr, "FAIL[meta]: theta mismatch in %s (%.17g vs %.17g)\n",
+                where, a->theta, b->theta);
+        fail = 1;
+    }
+    if (a->form != b->form) {
+        fprintf(stderr, "FAIL[meta]: form mismatch in %s (%s vs %s)\n",
+                where, form_name(a->form), form_name(b->form));
+        fail = 1;
+    }
+    if (a->half != b->half) {
+        fprintf(stderr, "FAIL[meta]: half mismatch in %s (%d vs %d)\n",
+                where, a->half, b->half);
+        fail = 1;
+    }
+    if (!meta_root_current(a) || !meta_root_current(b)) {
+        fprintf(stderr, "FAIL[meta]: root box mismatch in %s\n", where);
+        fail = 1;
+    }
+    return fail;
+}
+
+int cert_verify(const char *path, double theta, int theta_set,
+                enclosure_form form, int form_set,
+                int half, int half_set, slong prec) {
     FILE *fp = fopen(path, "r");
     if (!fp) { fprintf(stderr, "cert_verify: cannot open %s\n", path); return -1; }
 
@@ -462,10 +684,30 @@ int cert_verify(const char *path, double theta, enclosure_form form,
     double worst_cert_fhi = -1.0;
     arb_t fenc;
     arb_init(fenc);
+    cert_meta meta;
+    cert_meta_init(&meta);
 
     long physical_line = 0;
     while (getline(&line, &cap, fp) != -1) {
         physical_line++;
+        cert_meta parsed_meta;
+        int mp = parse_meta_line(line, &parsed_meta);
+        if (mp < 0) {
+            fails++;
+            fprintf(stderr, "FAIL[meta]: malformed metadata at line %ld\n",
+                    physical_line);
+            continue;
+        }
+        if (mp > 0) {
+            if (meta.present) {
+                fails++;
+                fprintf(stderr, "FAIL[meta]: duplicate metadata at line %ld\n",
+                        physical_line);
+            } else {
+                meta = parsed_meta;
+            }
+            continue;
+        }
         double lo[4], hi[4];
         char status[16];
         int item;
@@ -511,6 +753,43 @@ int cert_verify(const char *path, double theta, enclosure_form form,
     }
     free(line);
     fclose(fp);
+
+    if (!meta.present) {
+        fails++;
+        fprintf(stderr,
+                "FAIL[meta]: certificate has no metadata line; regenerate or assemble with this version\n");
+    } else {
+        if (meta.schema != 2) {
+            fails++;
+            fprintf(stderr, "FAIL[meta]: unsupported certificate schema %d\n",
+                    meta.schema);
+        }
+        if (!meta_root_current(&meta)) {
+            fails++;
+            fprintf(stderr, "FAIL[meta]: certificate root box does not match this verifier\n");
+        }
+        if (theta_set && !close_double(theta, meta.theta)) {
+            fails++;
+            fprintf(stderr,
+                    "FAIL[meta]: command-line theta %.17g does not match certificate theta %.17g\n",
+                    theta, meta.theta);
+        }
+        if (form_set && form != meta.form) {
+            fails++;
+            fprintf(stderr,
+                    "FAIL[meta]: command-line form %s does not match certificate form %s\n",
+                    form_name(form), form_name(meta.form));
+        }
+        if (half_set && half != meta.half) {
+            fails++;
+            fprintf(stderr,
+                    "FAIL[meta]: command-line half %d does not match certificate half %d\n",
+                    half, meta.half);
+        }
+        theta = meta.theta;
+        form = meta.form;
+        half = meta.half;
+    }
 
     if (n == 0) {
         fails++;
@@ -579,12 +858,14 @@ static void free_records(cert_record *rec, long n) {
     free(rec);
 }
 
-static int load_records(const char *path, cert_record **out, long *nout) {
+static int load_records(const char *path, cert_record **out, long *nout,
+                        cert_meta *meta) {
     FILE *fp = fopen(path, "r");
     if (!fp) {
         fprintf(stderr, "assemble: cannot open %s\n", path);
         return 1;
     }
+    cert_meta_init(meta);
 
     char *line = NULL;
     size_t cap = 0;
@@ -598,6 +879,24 @@ static int load_records(const char *path, cert_record **out, long *nout) {
 
     while (getline(&line, &cap, fp) != -1) {
         physical_line++;
+        cert_meta parsed_meta;
+        int mp = parse_meta_line(line, &parsed_meta);
+        if (mp < 0) {
+            fprintf(stderr, "FAIL[assemble]: malformed metadata in %s line %ld\n",
+                    path, physical_line);
+            free(line); fclose(fp); free_records(rec, n);
+            return 1;
+        }
+        if (mp > 0) {
+            if (meta->present) {
+                fprintf(stderr, "FAIL[assemble]: duplicate metadata in %s line %ld\n",
+                        path, physical_line);
+                free(line); fclose(fp); free_records(rec, n);
+                return 1;
+            }
+            *meta = parsed_meta;
+            continue;
+        }
         double lo[4], hi[4];
         char status[16];
         int item;
@@ -650,6 +949,18 @@ static int load_records(const char *path, cert_record **out, long *nout) {
 
     free(line);
     fclose(fp);
+    if (!meta->present) {
+        fprintf(stderr,
+                "FAIL[meta]: %s has no metadata line; regenerate it with this version\n",
+                path);
+        free_records(rec, n);
+        return 1;
+    }
+    if (meta->schema != 2 || !meta_root_current(meta)) {
+        fprintf(stderr, "FAIL[meta]: unsupported metadata in %s\n", path);
+        free_records(rec, n);
+        return 1;
+    }
     *out = rec;
     *nout = n;
     return 0;
@@ -663,7 +974,8 @@ int cert_assemble(const char **paths, size_t npaths, const char *out_path) {
 
     cert_record *cur = NULL;
     long ncur = 0;
-    if (load_records(paths[0], &cur, &ncur)) return 1;
+    cert_meta out_meta;
+    if (load_records(paths[0], &cur, &ncur, &out_meta)) return 1;
     if (ncur == 0) {
         fprintf(stderr, "assemble: %s is empty\n", paths[0]);
         free_records(cur, ncur);
@@ -673,10 +985,19 @@ int cert_assemble(const char **paths, size_t npaths, const char *out_path) {
     for (size_t step = 1; step < npaths; step++) {
         cert_record *ref = NULL;
         long nref = 0;
-        if (load_records(paths[step], &ref, &nref)) {
+        cert_meta ref_meta;
+        if (load_records(paths[step], &ref, &nref, &ref_meta)) {
             free_records(cur, ncur);
             return 1;
         }
+        if (meta_compatible(&out_meta, &ref_meta, paths[step])) {
+            free_records(cur, ncur); free_records(ref, nref);
+            return 1;
+        }
+        out_meta.pair_eq_cert = out_meta.pair_eq_cert || ref_meta.pair_eq_cert;
+        out_meta.flat_area_cert = out_meta.flat_area_cert || ref_meta.flat_area_cert;
+        if (out_meta.run_prec < 0 || (ref_meta.run_prec >= 0 && ref_meta.run_prec < out_meta.run_prec))
+            out_meta.run_prec = ref_meta.run_prec;
         if (nref == 0) {
             fprintf(stderr, "assemble: %s is empty\n", paths[step]);
             free_records(cur, ncur); free_records(ref, nref);
@@ -761,6 +1082,7 @@ int cert_assemble(const char **paths, size_t npaths, const char *out_path) {
         free_records(cur, ncur);
         return 1;
     }
+    cert_write_meta_struct(out, &out_meta);
     for (long i = 0; i < ncur; i++) {
         fputs(cur[i].line, out);
         size_t len = strlen(cur[i].line);
