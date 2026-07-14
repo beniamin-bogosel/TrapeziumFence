@@ -690,6 +690,7 @@ int cert_verify(const char *path, const char *theta_str, int theta_set,
     size_t cap = 0;
     long n = 0, fails = 0, n_disc = 0, n_cert = 0, n_flat = 0;
     long n_nonopt = 0, n_surv = 0;
+    int coverage_checked = 0;
     long alloc = 1024;
     cert_leaf *leaf = malloc((size_t)alloc * sizeof(*leaf));
     if (!leaf) {
@@ -830,6 +831,7 @@ int cert_verify(const char *path, const char *theta_str, int theta_set,
             fails++;
             fprintf(stderr, "FAIL[cover]: out of memory while preparing coverage audit\n");
         } else {
+            coverage_checked = 1;
             int cover_fail = verify_cover_node_slice(leaf, idx, n, root_lo, root_hi,
                                                       theta_str, form, half, prec, fenc,
                                                       &worst_cert_fhi,
@@ -856,7 +858,7 @@ int cert_verify(const char *path, const char *theta_str, int theta_set,
     printf("verify: %ld leaves  (discard %ld, certify %ld, flat_area %ld, nonoptimal %ld, survivor %ld)  prec=%ld\n",
            n, n_disc, n_cert, n_flat, n_nonopt, n_surv, (long)prec);
     printf("verify: dyadic partition coverage of the full root box: %s\n",
-           fails ? "FAILED" : "PASSED");
+           coverage_checked ? (fails ? "FAILED" : "PASSED") : "SKIPPED");
     printf("verify: worst re-checked certified f_hi = %.15g  (theta = %s)\n",
            worst_cert_fhi, theta_str ? theta_str : "(none)");
     printf("verify: %ld failures -> %s\n", fails, fails ? "AUDIT FAILED" : "AUDIT PASSED");
