@@ -26,9 +26,12 @@ threshold experiment.
   low by the six-function minimum, certified low by the flat-area estimate,
   certified nonoptimal by pair-fence disagreement, or retained as an unresolved
   survivor once it reaches `wfloor`.
-- `cert.h`, `cert.c`: JSONL writer and verifier.  Verification recomputes all
-  local claims and also recursively checks that the certificate leaves tile the
-  full root box exactly according to the same dyadic splitting rule.
+- `cert.h`, `cert.c`: JSONL writer, verifier, and assembler.  Verification
+  recomputes all local claims and checks that the certificate leaves tile the
+  full root box exactly according to the same dyadic splitting rule.  Missing
+  dyadic children fail immediately instead of triggering deep subdivision.
+  Assembly replaces survivor leaves through a refinement chain and writes one
+  full-domain certificate.
 - `fence_validate.c`: CLI entry point.
 
 ## Tools
@@ -39,6 +42,8 @@ threshold experiment.
   formula agreement, series evaluation, admissibility, one sub-threshold
   certification, the pair-equality nonoptimality certificate, and the
   flat-area certificate.
+- `tests/test_cert_cli.sh`: CLI regression test for certificate verification,
+  including fast failure on a missing certificate leaf.
 
 ## Certificate Reading
 
@@ -237,10 +242,10 @@ Observed data:
 
 | Run | wfloor | Time (s) | Leaves | Discarded | Certified | Flat-area | Nonoptimal | Survivors | Survivor volume |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| Base | 0.025 | 82.416 | 215758 | 11555 | 116319 | 213 | 17884 | 69787 | <= 1.66385e-2 |
-| Refine 1 | 0.0125 | 112.479 | 360798 | 2967 | 282735 | 0 | 50065 | 25031 | <= 3.72991e-4 |
-| Refine 2 | 0.00625 | 35.136 | 119594 | 28 | 51386 | 0 | 55878 | 12302 | <= 1.14571e-5 |
-| Refine 3 | 0.003125 | 18.052 | 66134 | 0 | 17312 | 0 | 39816 | 9006 | <= 5.24218e-7 |
+| Base | 0.025 | 79.139 | 215758 | 11555 | 116319 | 213 | 17884 | 69787 | <= 1.66385e-2 |
+| Refine 1 | 0.0125 | 117.585 | 360798 | 2967 | 282735 | 0 | 50065 | 25031 | <= 3.72991e-4 |
+| Refine 2 | 0.00625 | 35.091 | 119594 | 28 | 51386 | 0 | 55878 | 12302 | <= 1.14571e-5 |
+| Refine 3 | 0.003125 | 19.360 | 66134 | 0 | 17312 | 0 | 39816 | 9006 | <= 5.24218e-7 |
 
 After the last recorded refinement, all remaining survivors were certainly
 admissible and the boundary-straddling survivor volume was zero.  The final
@@ -262,6 +267,35 @@ f(T*) ~= 1.04968581549.
 The equal-axis PNG figure is
 `Documentation/figures/current_survivor_rectangles.png`.
 
+Assemble the full-domain certificate:
+
+```sh
+./fence_validate --assemble \
+  flat_pair_cert_w0025.jsonl \
+  flat_pair_refine_w00125.jsonl \
+  flat_pair_refine_w000625.jsonl \
+  flat_pair_refine_w0003125.jsonl \
+  --out flat_pair_full_w0003125.jsonl
+```
+
+Then audit the assembled certificate:
+
+```sh
+./fence_validate --verify flat_pair_full_w0003125.jsonl \
+  --theta 1.0496 --prec 70 --form centered --serial \
+  --flat-area-cert --pair-eq-cert
+```
+
+Recorded assembled audit:
+
+```text
+verify: 655164 leaves  (discard 14550, certify 467752, flat_area 213,
+        nonoptimal 163643, survivor 9006)  prec=70
+verify: dyadic partition coverage of the full root box: PASSED
+verify: worst re-checked certified f_hi = 1.04959998999232
+verify: 0 failures -> AUDIT PASSED
+```
+
 ## Current Conclusion
 
 For `theta = 1.0496`, with the current code and recorded refinement chain, the
@@ -275,7 +309,8 @@ This means there is no possible above-threshold optimizer outside
 rectangle is low by a fence-length bound alone; some boxes are eliminated by
 the independent nonoptimality certificate.
 
-The refinement files listed above are incremental.  To obtain a single
-auditable certificate for the whole root domain, assemble the chain by replacing
-survivor leaves at each stage and then run `./fence_validate --verify` on the
-assembled JSONL file with the same flags and sufficient precision.
+The refinement files listed above are incremental.  Use `--assemble` to obtain
+a single auditable certificate for the whole root domain, then run
+`./fence_validate --verify` on the assembled JSONL file with the same flags and
+sufficient precision.  Verifying a refinement-only file as a full certificate
+now fails immediately with a missing-child coverage error.

@@ -89,3 +89,43 @@ volume is zero.
 Sound reading: outside the survivor union, every admissible normalized
 quadrilateral is either certified below `theta` or certified nonoptimal by the
 opposite-pair equality condition.
+
+## Full Certificate Assembly
+
+The refinement files are partial.  Assemble them before whole-domain
+verification:
+
+```sh
+./fence_validate --assemble \
+  flat_pair_cert_w0025.jsonl \
+  flat_pair_refine_w00125.jsonl \
+  flat_pair_refine_w000625.jsonl \
+  flat_pair_refine_w0003125.jsonl \
+  --out flat_pair_full_w0003125.jsonl
+```
+
+Assembly output:
+
+```text
+assembled flat_pair_refine_w00125.jsonl -> 506769 leaves
+assembled flat_pair_refine_w000625.jsonl -> 601332 leaves
+assembled flat_pair_refine_w0003125.jsonl -> 655164 leaves
+assemble: wrote 655164 leaves to flat_pair_full_w0003125.jsonl
+```
+
+Whole-domain verification:
+
+```sh
+./fence_validate --verify flat_pair_full_w0003125.jsonl \
+  --theta 1.0496 --prec 70 --form centered --serial \
+  --flat-area-cert --pair-eq-cert
+```
+
+Verified output:
+
+```text
+verify: 655164 leaves  (discard 14550, certify 467752, flat_area 213, nonoptimal 163643, survivor 9006)  prec=70
+verify: dyadic partition coverage of the full root box: PASSED
+verify: worst re-checked certified f_hi = 1.04959998999232  (theta = 1.0496)
+verify: 0 failures -> AUDIT PASSED
+```

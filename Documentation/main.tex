@@ -114,9 +114,11 @@ The C implementation is arranged in layers:
   surviving; splits unresolved boxes; collects statistics; and can seed a
   refinement run from previous survivors.
 
-  \item[\code{cert.c}, \code{cert.h}] JSONL certificate writer and stateless
-  certificate verifier.  The verifier recomputes local claims and checks that
-  all leaves tile the original domain by the same dyadic splitting rule.
+  \item[\code{cert.c}, \code{cert.h}] JSONL certificate writer, stateless
+  certificate verifier, and certificate assembler.  The verifier recomputes
+  local claims and checks that all leaves tile the original domain by the same
+  dyadic splitting rule.  Missing dyadic children fail immediately.  The
+  assembler replaces survivor leaves through a refinement chain.
 
   \item[\code{fence_validate.c}] Command-line front end for searching,
   refining, verifying, and evaluating a point.
@@ -128,6 +130,9 @@ The C implementation is arranged in layers:
   pair-bound formula agreement, series evaluation, inadmissibility, one
   interior certification, the pair-equality certificate, and the flat-area
   certificate.
+
+  \item[\code{tests/test_cert_cli.sh}] CLI regression test for certificate
+  verification, including fast failure on a missing certificate leaf.
 \end{description}
 
 \section{Rectangle Validation Logic}
@@ -242,8 +247,9 @@ For a box \(X\), the search applies the following logic:
 \end{enumerate}
 
 The search can be restarted from survivors by passing \code{--refine FILE}.
-The refined output plus the discarded/certified leaves of the previous run
-forms a complete certificate for the original root box.
+Refinement outputs are partial certificates.  Use \code{--assemble} to replace
+survivor leaves stage by stage and produce a complete certificate for the
+original root box.
 
 \subsection{Certificate Semantics}
 
@@ -529,9 +535,11 @@ leaf\_cmp & Static comparator for sorting certificate leaves. \\
 find\_leaf & Static binary search for an exact dyadic box in the sorted certificate array. \\
 widest\_coord\_cert & Static copy of the deterministic splitting rule used by the verifier. \\
 verify\_leaf\_claim & Static local audit of one leaf: discarded boxes must still be certainly inadmissible; certified and flat-area boxes must recompute below \(\theta\); nonoptimal boxes must recompute disjoint opposite-pair intervals; survivors require no value claim. \\
-verify\_cover\_node & Static recursive tiling audit.  It descends the dyadic tree and requires every generated node to be represented by exactly one certificate leaf or by its two children. \\
+verify\_cover\_node\_slice & Static recursive tiling audit over the leaves contained in the current node.  Missing children fail immediately; the verifier no longer descends empty subtrees. \\
+cover\_node\_slice\_structure & Static structural tiling check used by assembly, without rechecking local analytic claims. \\
 cert\_load\_survivors & Loads survivor boxes from a certificate file for a refinement run. \\
 cert\_verify & Public verifier combining parsing, duplicate detection, global coverage checking, and local claim recomputation. \\
+cert\_assemble & Public assembler that replaces survivor leaves through a refinement chain and writes one full-domain JSONL certificate. \\
 \bottomrule
 \end{longtable}
 
@@ -543,7 +551,7 @@ Function & Purpose \\
 \midrule
 \endhead
 usage & Static helper printing command-line options. \\
-main & Parses options, dispatches point evaluation, verification, full search, or survivor refinement; writes certificates and prints statistics. \\
+main & Parses options, dispatches point evaluation, verification, certificate assembly, full search, or survivor refinement; writes certificates and prints statistics. \\
 \bottomrule
 \end{longtable}
 
@@ -565,6 +573,7 @@ tests/test\_trap.c: test\_inadmissible & Checks conservative inadmissibility on 
 tests/test\_trap.c: test\_interior\_certify & Checks that an interior sub-threshold box certifies. \\
 tests/test\_trap.c: test\_pair\_equality\_certificate & Checks that a box with disjoint opposite-pair intervals is certified nonoptimal, while a small box around \(T^\ast\) is not rejected by this certificate. \\
 tests/test\_trap.c: test\_flat\_area\_certificate & Checks that small-area boxes are certified low and that a small box around \(T^\ast\) is not eliminated by the flat-area estimate. \\
+tests/test\_cert\_cli.sh & Builds a tiny certificate, verifies it, deletes one leaf, and checks that verification fails quickly with a coverage error. \\
 \bottomrule
 \end{longtable}
 
@@ -587,6 +596,7 @@ The executable is \code{fence\_validate}.  The principal options are:
   \item[\code{--out FILE}] Write a JSONL certificate stream.
   \item[\code{--stats}] Print summary statistics.
   \item[\code{--verify FILE}] Re-check a certificate.
+  \item[\code{--assemble FILE... --out OUT}] Assemble a base certificate and refinement files into one full-domain certificate.
   \item[\code{--eval c1 c2 d1 d2}] Print the six items and minimum at a point.
   \item[\code{--refine FILE}] Seed the search from survivor boxes in a previous certificate.
 \end{description}
@@ -644,13 +654,13 @@ Run & \code{wfloor} & Time (s) & Leaves & Discarded & Certified &
 Flat & Nonopt. & Survivors & Survivor volume \\
 \midrule
 \endhead
-Base & 0.025 & 82.416 & 215758 & 11555 & 116319 & 213 & 17884 & 69787 &
+Base & 0.025 & 79.139 & 215758 & 11555 & 116319 & 213 & 17884 & 69787 &
 \(1.66385{\times}10^{-2}\) \\
-Refine 1 & 0.0125 & 112.479 & 360798 & 2967 & 282735 & 0 & 50065 & 25031 &
+Refine 1 & 0.0125 & 117.585 & 360798 & 2967 & 282735 & 0 & 50065 & 25031 &
 \(3.72991{\times}10^{-4}\) \\
-Refine 2 & 0.00625 & 35.136 & 119594 & 28 & 51386 & 0 & 55878 & 12302 &
+Refine 2 & 0.00625 & 35.091 & 119594 & 28 & 51386 & 0 & 55878 & 12302 &
 \(1.14571{\times}10^{-5}\) \\
-Refine 3 & 0.003125 & 18.052 & 66134 & 0 & 17312 & 0 & 39816 & 9006 &
+Refine 3 & 0.003125 & 19.360 & 66134 & 0 & 17312 & 0 & 39816 & 9006 &
 \(5.24218{\times}10^{-7}\) \\
 \bottomrule
 \end{longtable}
@@ -724,12 +734,49 @@ optimality.
 \subsection{Audit Status}
 
 The listed files are incremental refinement files: each refinement replaces the
-survivor leaves of the preceding run.  To obtain a single auditable certificate
-for the whole root domain, one should assemble the chain by replacing survivors
-at each stage, then run \code{./fence\_validate --verify} with the same
-certificate options and sufficient precision.  The recorded statistics above
-are the local statistics of the refinement steps and the postprocessed
-survivor analysis.
+survivor leaves of the preceding run.  Assemble the chain before whole-domain
+verification:
+
+\begin{lstlisting}
+./fence_validate --assemble \
+  flat_pair_cert_w0025.jsonl \
+  flat_pair_refine_w00125.jsonl \
+  flat_pair_refine_w000625.jsonl \
+  flat_pair_refine_w0003125.jsonl \
+  --out flat_pair_full_w0003125.jsonl
+\end{lstlisting}
+
+The recorded assembly produced
+\[
+  655{,}164
+\]
+leaves.  The assembled full-domain certificate was then audited by
+
+\begin{lstlisting}
+./fence_validate --verify flat_pair_full_w0003125.jsonl \
+  --theta 1.0496 --prec 70 --form centered --serial \
+  --flat-area-cert --pair-eq-cert
+\end{lstlisting}
+
+with output
+\[
+\begin{aligned}
+&655{,}164\text{ leaves},\quad 14{,}550\text{ discarded},\quad
+467{,}752\text{ certified},\\
+&213\text{ flat-area},\quad 163{,}643\text{ nonoptimal},\quad
+9{,}006\text{ survivors}.
+\end{aligned}
+\]
+The dyadic partition coverage of the full root box passed, the worst
+rechecked certified upper bound was
+\[
+  1.04959998999232 \le 1.0496,
+\]
+and the audit reported zero failures.
+
+Verifying a refinement-only file as a full certificate is now a fast structural
+failure: the verifier reports the first missing dyadic child instead of
+descending an empty subtree.
 
 \section{Limitations and Soundness Notes}
 

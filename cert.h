@@ -2,7 +2,7 @@
  *
  * One JSON line per leaf:
  *   {"box":[[lo,hi],[lo,hi],[lo,hi],[lo,hi]],
- *    "status":"discarded|certified|survivor",
+ *    "status":"discarded|certified|flat_area|nonoptimal|survivor",
  *    "item":<int, -1 if none>,
  *    "encl":[flo,fhi],
  *    "prec":<int>}
@@ -36,5 +36,10 @@ int cert_verify(const char *path, double theta, enclosure_form form,
 /* Load the survivor boxes of a certificate into freshly-malloc'd arrays
  * (*lo)[4] / (*hi)[4]; returns their count (0 on error; caller frees). */
 size_t cert_load_survivors(const char *path, double (**lo)[4], double (**hi)[4]);
+
+/* Assemble a full-domain certificate from a base certificate and zero or more
+ * refinement certificates.  Each refinement must tile exactly the survivor
+ * boxes remaining from the previous stage. */
+int cert_assemble(const char **paths, size_t npaths, const char *out_path);
 
 #endif /* TRAP_CERT_H */

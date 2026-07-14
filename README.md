@@ -82,6 +82,17 @@ Example:
 python3 analyze_cert.py cert_104.jsonl --theta 1.04
 ```
 
+For refinement chains, assemble the base file and all refinement files before
+whole-domain verification:
+
+```
+./fence_validate --assemble base.jsonl refine1.jsonl refine2.jsonl \
+  --out assembled_full.jsonl
+
+./fence_validate --verify assembled_full.jsonl --theta 1.04 \
+  --prec 80 --form centered --serial
+```
+
 Important options:
 
 - `--theta T`: threshold to certify below.
@@ -91,14 +102,19 @@ Important options:
 - `--flat-area-cert`: apply the small-area low-fence certificate.
 - `--pair-eq-cert`: apply the opposite-pair equality nonoptimality certificate.
 - `--verify FILE`: independently re-checks local claims and proves the JSONL
-  leaves tile the full root box.
+  leaves tile the full root box.  Incomplete coverage now fails immediately
+  with the first missing dyadic child.
+- `--assemble FILE... --out OUT`: replace survivor leaves through a refinement
+  chain and write one full-domain certificate.
 - `--max-leaves N`: debugging limit only; a truncated run will not pass full
   certificate coverage verification.
 
 ## Soundness Fixes Relative To The Starting Snapshot
 
 - Certificate verification now checks the complete dyadic partition of the root
-  box, not just each JSON line in isolation.
+  box, not just each JSON line in isolation, and fails fast on missing regions.
+- Refinement files can be assembled with `--assemble`; each refinement is
+  structurally checked against the survivor boxes it replaces.
 - Centered and natural enclosures are intersected when possible; if finite
   enclosures ever fail to overlap, their interval hull is used conservatively.
 - Post-processing reports only certified-low regions and unresolved survivors.

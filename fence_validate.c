@@ -37,6 +37,9 @@ static void usage(const char *prog) {
 "  --out FILE       write JSONL certificate stream\n"
 "  --stats          print summary statistics\n"
 "  --verify FILE    re-check local claims and full dyadic coverage\n"
+"  --assemble FILE [FILE ...]\n"
+"                   assemble base/refinement certificates into one full JSONL\n"
+"                   certificate; requires --out FILE\n"
 "  --eval c1 c2 d1 d2   print the six items and f at a single point\n"
 "  --refine FILE    seed the search from FILE's survivor boxes (use a smaller\n"
 "                   --wfloor); output + FILE's certified/discarded leaves form\n"
@@ -61,9 +64,16 @@ int main(int argc, char **argv) {
     const char *out_path = NULL;
     const char *verify_path = NULL;
     const char *refine_path = NULL;
+    const char **assemble_paths = malloc((size_t)argc * sizeof(*assemble_paths));
+    size_t n_assemble = 0;
     int do_stats = 0;
     int do_eval = 0;
     double evalpt[4] = {0, 0, 0, 0};
+
+    if (!assemble_paths) {
+        fprintf(stderr, "out of memory\n");
+        return 2;
+    }
 
     for (int i = 1; i < argc; i++) {
         if (!strcmp(argv[i], "--theta") && i + 1 < argc) p.theta = atof(argv[++i]);
@@ -85,6 +95,16 @@ int main(int argc, char **argv) {
         else if (!strcmp(argv[i], "--out") && i + 1 < argc) out_path = argv[++i];
         else if (!strcmp(argv[i], "--stats")) do_stats = 1;
         else if (!strcmp(argv[i], "--verify") && i + 1 < argc) verify_path = argv[++i];
+        else if (!strcmp(argv[i], "--assemble")) {
+            while (i + 1 < argc && strncmp(argv[i + 1], "--", 2) != 0) {
+                assemble_paths[n_assemble++] = argv[++i];
+            }
+            if (n_assemble == 0) {
+                fprintf(stderr, "--assemble requires at least one input file\n");
+                free(assemble_paths);
+                return 2;
+            }
+        }
         else if (!strcmp(argv[i], "--refine") && i + 1 < argc) refine_path = argv[++i];
         else if (!strcmp(argv[i], "--eval") && i + 4 < argc) {
             do_eval = 1;
@@ -93,6 +113,19 @@ int main(int argc, char **argv) {
         else if (!strcmp(argv[i], "-h") || !strcmp(argv[i], "--help")) { usage(argv[0]); return 0; }
         else { fprintf(stderr, "unknown argument: %s\n", argv[i]); usage(argv[0]); return 2; }
     }
+
+    if (n_assemble > 0) {
+        if (!out_path) {
+            fprintf(stderr, "--assemble requires --out FILE\n");
+            free(assemble_paths);
+            return 2;
+        }
+        int fails = cert_assemble(assemble_paths, n_assemble, out_path);
+        free(assemble_paths);
+        series_cleanup();
+        return fails ? 1 : 0;
+    }
+    free(assemble_paths);
 
     if (do_eval) {
         static const char *nm[6] = {"vertA", "vertB", "vertC", "vertD",

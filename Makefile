@@ -43,8 +43,9 @@ fence_validate: fence_validate.o $(CORE_OBJ)
 test_trap: tests/test_trap.o $(CORE_OBJ)
 	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $^ $(LDLIBS)
 
-test: test_trap
+test: test_trap fence_validate
 	./test_trap
+	sh tests/test_cert_cli.sh
 
 %.o: %.c
 	$(CC) $(CFLAGS) -I. -c -o $@ $<
