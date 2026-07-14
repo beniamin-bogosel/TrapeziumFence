@@ -1,5 +1,6 @@
 /* admissible.c -- certainly-inadmissible test over a box. */
 #include "admissible.h"
+#include "threshold.h"
 
 static void set_box(arb_t x, double lo, double hi, slong prec) {
     arf_t L, U;
@@ -20,7 +21,7 @@ static void sqlen(arb_t r, const arb_t ux, const arb_t uy, slong prec) {
 }
 
 int box_small_area_certifies_low(const double lo[4], const double hi[4],
-                                 double theta, slong prec) {
+                                 const char *theta_str, slong prec) {
     arb_t c1, c2, d1, d2, area, t1, t2;
     arb_init(c1); arb_init(c2); arb_init(d1); arb_init(d2);
     arb_init(area); arb_init(t1); arb_init(t2);
@@ -42,7 +43,7 @@ int box_small_area_certifies_low(const double lo[4], const double hi[4],
     arf_init(u);
     arb_get_ubound_arf(u, area, prec);
     int ok = arb_is_finite(area) && arf_is_finite(u)
-             && arf_cmp_d(u, 0.25 * theta * theta) <= 0;
+             && threshold_area_ub_leq(u, theta_str);
 
     arf_clear(u);
     arb_clear(c1); arb_clear(c2); arb_clear(d1); arb_clear(d2);

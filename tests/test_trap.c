@@ -134,7 +134,7 @@ static void test_pair_equality_certificate(slong prec) {
 
 static void test_flat_area_certificate(slong prec) {
     printf("(g) flat-area certificate\n");
-    double theta = 1.0496;
+    const char *theta = "1.0496";
     double lo[4] = {0.79, 0.09, 0.19, 0.09};
     double hi[4] = {0.81, 0.11, 0.21, 0.11};
     ok(!box_certainly_inadmissible(lo, hi, 0, prec), "flat test box is admissible");

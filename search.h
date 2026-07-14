@@ -2,8 +2,8 @@
  *
  * Refine-until-below-threshold:
  *   DISCARD   box certainly inadmissible;
- *   CERTIFY   f_hi <= theta  (shortest fence is proved <= theta on the box);
- *   FLAT      area upper bound <= theta^2/4, so the flat-area fence estimate
+ *   CERTIFY   f_hi <= exact decimal theta  (shortest fence is proved low);
+ *   FLAT      area upper bound <= exact theta^2/4, so the flat-area fence estimate
  *             L/sqrt(A) <= 2 sqrt(A) certifies the box low;
  *   NONOPT    opposite-pair fence intervals are disjoint, so the box contains
  *             no optimizer by the pair-equality necessary condition;
@@ -24,7 +24,8 @@ enum { LEAF_DISCARD = 0, LEAF_CERTIFIED = 1, LEAF_SURVIVOR = 2,
        LEAF_NONOPTIMAL = 3, LEAF_FLAT_AREA = 4 };
 
 typedef struct {
-    double theta;
+    double theta;          /* display/adaptive heuristic only */
+    char   theta_str[128]; /* exact decimal literal used for certification */
     double wfloor;
     slong  prec;
     slong  maxprec;       /* cap for adaptive precision */

@@ -2,6 +2,7 @@
 #define _POSIX_C_SOURCE 200809L
 #include "cert.h"
 #include "admissible.h"
+#include "threshold.h"
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
@@ -10,7 +11,8 @@
 typedef struct {
     int present;
     int schema;
-    double theta;
+    char theta_str[128];
+    double theta_approx;
     enclosure_form form;
     int half;
     int pair_eq_cert;
@@ -69,14 +71,6 @@ static int json_string_field(const char *line, const char *name,
     return 1;
 }
 
-static int json_double_field(const char *line, const char *name, double *out) {
-    const char *p = json_value(line, name);
-    char *end = NULL;
-    if (!p) return 0;
-    *out = strtod(p, &end);
-    return end && end != p;
-}
-
 static int json_long_field(const char *line, const char *name, long *out) {
     const char *p = json_value(line, name);
     char *end = NULL;
@@ -124,8 +118,16 @@ static int parse_meta_line(const char *line, cert_meta *m) {
     tmp.present = 1;
     char form[32];
     long schema, run_prec;
+    if (!json_string_field(line, "theta", tmp.theta_str, sizeof tmp.theta_str) &&
+        !json_string_field(line, "theta_str", tmp.theta_str, sizeof tmp.theta_str)) {
+        return -1;
+    }
+    fmpq_t theta_q;
+    fmpq_init(theta_q);
+    int theta_bad = threshold_parse_fmpq(theta_q, tmp.theta_str);
+    fmpq_clear(theta_q);
+    if (theta_bad) return -1;
     if (!json_long_field(line, "schema", &schema) ||
-        !json_double_field(line, "theta", &tmp.theta) ||
         !json_string_field(line, "form", form, sizeof form) ||
         !parse_form_name(form, &tmp.form) ||
         !json_bool_field(line, "half", &tmp.half) ||
@@ -133,6 +135,7 @@ static int parse_meta_line(const char *line, cert_meta *m) {
         return -1;
     }
     tmp.schema = (int)schema;
+    tmp.theta_approx = threshold_to_double(tmp.theta_str);
     if (json_bool_field(line, "pair_eq_cert", &tmp.pair_eq_cert) == 0)
         tmp.pair_eq_cert = 0;
     if (json_bool_field(line, "flat_area_cert", &tmp.flat_area_cert) == 0)
@@ -145,12 +148,12 @@ static int parse_meta_line(const char *line, cert_meta *m) {
 
 static void cert_write_meta_struct(FILE *fp, const cert_meta *m) {
     fprintf(fp,
-        "{\"type\":\"meta\",\"schema\":%d,\"theta\":%.17g,"
+        "{\"type\":\"meta\",\"schema\":%d,\"theta\":\"%s\",\"theta_approx\":%.17g,"
         "\"form\":\"%s\",\"half\":%s,"
         "\"pair_eq_cert\":%s,\"flat_area_cert\":%s,\"run_prec\":%ld,"
         "\"root\":[[%.17g,%.17g],[%.17g,%.17g],[%.17g,%.17g],[%.17g,%.17g]],"
         "\"split_spans\":[2,1,2,1]}\n",
-        m->schema, m->theta, form_name(m->form),
+        m->schema, m->theta_str, m->theta_approx, form_name(m->form),
         m->half ? "true" : "false",
         m->pair_eq_cert ? "true" : "false",
         m->flat_area_cert ? "true" : "false",
@@ -164,8 +167,9 @@ void cert_write_meta(FILE *fp, const search_params *p) {
     cert_meta m;
     cert_meta_init(&m);
     m.present = 1;
-    m.schema = 2;
-    m.theta = p->theta;
+    m.schema = 3;
+    snprintf(m.theta_str, sizeof m.theta_str, "%s", p->theta_str);
+    m.theta_approx = p->theta;
     m.form = p->form;
     m.half = p->half;
     m.pair_eq_cert = p->pair_eq_cert;
@@ -308,7 +312,7 @@ static int widest_coord_cert(const double lo[4], const double hi[4]) {
     return best;
 }
 
-static int verify_leaf_claim(const cert_leaf *leaf, double theta,
+static int verify_leaf_claim(const cert_leaf *leaf, const char *theta_str,
                              enclosure_form form, int half, slong prec,
                              arb_t fenc, double *worst_cert_fhi,
                              long *n_disc, long *n_cert, long *n_flat,
@@ -333,10 +337,10 @@ static int verify_leaf_claim(const cert_leaf *leaf, double theta,
         int finite = arb_is_finite(fenc) && arf_is_finite(u);
         arf_clear(u);
         if (finite && fhi > *worst_cert_fhi) *worst_cert_fhi = fhi;
-        if (!finite || fhi > theta) {
+        if (!finite || !threshold_arf_leq(u, theta_str)) {
             fprintf(stderr,
-                    "FAIL[certify]: f_hi=%g > theta=%.15g or non-finite at line %ld\n",
-                    fhi, theta, leaf->line_no);
+                    "FAIL[certify]: f_hi=%g > theta=%s or non-finite at line %ld\n",
+                    fhi, theta_str, leaf->line_no);
             return 1;
         }
         return 0;
@@ -344,7 +348,7 @@ static int verify_leaf_claim(const cert_leaf *leaf, double theta,
 
     if (leaf->status == LEAF_FLAT_AREA) {
         (*n_flat)++;
-        if (!box_small_area_certifies_low(leaf->lo, leaf->hi, theta, prec)) {
+        if (!box_small_area_certifies_low(leaf->lo, leaf->hi, theta_str, prec)) {
             fprintf(stderr,
                     "FAIL[flat_area]: area upper bound too large at line %ld\n",
                     leaf->line_no);
@@ -375,7 +379,7 @@ static int verify_leaf_claim(const cert_leaf *leaf, double theta,
 
 static int verify_cover_node_slice(cert_leaf *leaf, const long *idx, long nidx,
                                    const double lo[4], const double hi[4],
-                                   double theta, enclosure_form form, int half,
+                                   const char *theta_str, enclosure_form form, int half,
                                    slong prec, arb_t fenc,
                                    double *worst_cert_fhi,
                                    long *n_disc, long *n_cert, long *n_flat,
@@ -421,7 +425,7 @@ static int verify_cover_node_slice(cert_leaf *leaf, const long *idx, long nidx,
             return 1;
         }
         lf->used = 1;
-        return verify_leaf_claim(lf, theta, form, half, prec, fenc,
+        return verify_leaf_claim(lf, theta_str, form, half, prec, fenc,
                                  worst_cert_fhi, n_disc, n_cert, n_flat,
                                  n_nonopt, n_surv);
     }
@@ -475,12 +479,12 @@ static int verify_cover_node_slice(cert_leaf *leaf, const long *idx, long nidx,
         return 1;
     }
 
-    int fail = verify_cover_node_slice(leaf, left, nl, l0, h0, theta, form, half,
+    int fail = verify_cover_node_slice(leaf, left, nl, l0, h0, theta_str, form, half,
                                        prec, fenc, worst_cert_fhi,
                                        n_disc, n_cert, n_flat, n_nonopt, n_surv,
                                        depth + 1);
     if (!fail) {
-        fail = verify_cover_node_slice(leaf, right, nr, l1, h1, theta, form, half,
+        fail = verify_cover_node_slice(leaf, right, nr, l1, h1, theta_str, form, half,
                                        prec, fenc, worst_cert_fhi,
                                        n_disc, n_cert, n_flat, n_nonopt, n_surv,
                                        depth + 1);
@@ -630,6 +634,18 @@ static int meta_root_current(const cert_meta *m) {
     return 1;
 }
 
+static int theta_literals_equal(const char *a, const char *b) {
+    fmpq_t qa, qb;
+    fmpq_init(qa);
+    fmpq_init(qb);
+    int ok = !threshold_parse_fmpq(qa, a) &&
+             !threshold_parse_fmpq(qb, b) &&
+             fmpq_cmp(qa, qb) == 0;
+    fmpq_clear(qa);
+    fmpq_clear(qb);
+    return ok;
+}
+
 static int meta_compatible(const cert_meta *a, const cert_meta *b,
                            const char *where) {
     int fail = 0;
@@ -642,9 +658,9 @@ static int meta_compatible(const cert_meta *a, const cert_meta *b,
                 where, a->schema, b->schema);
         fail = 1;
     }
-    if (!close_double(a->theta, b->theta)) {
-        fprintf(stderr, "FAIL[meta]: theta mismatch in %s (%.17g vs %.17g)\n",
-                where, a->theta, b->theta);
+    if (!theta_literals_equal(a->theta_str, b->theta_str)) {
+        fprintf(stderr, "FAIL[meta]: theta mismatch in %s (%s vs %s)\n",
+                where, a->theta_str, b->theta_str);
         fail = 1;
     }
     if (a->form != b->form) {
@@ -664,7 +680,7 @@ static int meta_compatible(const cert_meta *a, const cert_meta *b,
     return fail;
 }
 
-int cert_verify(const char *path, double theta, int theta_set,
+int cert_verify(const char *path, const char *theta_str, int theta_set,
                 enclosure_form form, int form_set,
                 int half, int half_set, slong prec) {
     FILE *fp = fopen(path, "r");
@@ -759,7 +775,7 @@ int cert_verify(const char *path, double theta, int theta_set,
         fprintf(stderr,
                 "FAIL[meta]: certificate has no metadata line; regenerate or assemble with this version\n");
     } else {
-        if (meta.schema != 2) {
+        if (meta.schema != 3) {
             fails++;
             fprintf(stderr, "FAIL[meta]: unsupported certificate schema %d\n",
                     meta.schema);
@@ -768,11 +784,11 @@ int cert_verify(const char *path, double theta, int theta_set,
             fails++;
             fprintf(stderr, "FAIL[meta]: certificate root box does not match this verifier\n");
         }
-        if (theta_set && !close_double(theta, meta.theta)) {
+        if (theta_set && !theta_literals_equal(theta_str, meta.theta_str)) {
             fails++;
             fprintf(stderr,
-                    "FAIL[meta]: command-line theta %.17g does not match certificate theta %.17g\n",
-                    theta, meta.theta);
+                    "FAIL[meta]: command-line theta %s does not match certificate theta %s\n",
+                    theta_str, meta.theta_str);
         }
         if (form_set && form != meta.form) {
             fails++;
@@ -786,7 +802,7 @@ int cert_verify(const char *path, double theta, int theta_set,
                     "FAIL[meta]: command-line half %d does not match certificate half %d\n",
                     half, meta.half);
         }
-        theta = meta.theta;
+        theta_str = meta.theta_str;
         form = meta.form;
         half = meta.half;
     }
@@ -815,7 +831,7 @@ int cert_verify(const char *path, double theta, int theta_set,
             fprintf(stderr, "FAIL[cover]: out of memory while preparing coverage audit\n");
         } else {
             int cover_fail = verify_cover_node_slice(leaf, idx, n, root_lo, root_hi,
-                                                      theta, form, half, prec, fenc,
+                                                      theta_str, form, half, prec, fenc,
                                                       &worst_cert_fhi,
                                                       &n_disc, &n_cert, &n_flat,
                                                       &n_nonopt, &n_surv, 0);
@@ -841,8 +857,8 @@ int cert_verify(const char *path, double theta, int theta_set,
            n, n_disc, n_cert, n_flat, n_nonopt, n_surv, (long)prec);
     printf("verify: dyadic partition coverage of the full root box: %s\n",
            fails ? "FAILED" : "PASSED");
-    printf("verify: worst re-checked certified f_hi = %.15g  (theta = %.15g)\n",
-           worst_cert_fhi, theta);
+    printf("verify: worst re-checked certified f_hi = %.15g  (theta = %s)\n",
+           worst_cert_fhi, theta_str ? theta_str : "(none)");
     printf("verify: %ld failures -> %s\n", fails, fails ? "AUDIT FAILED" : "AUDIT PASSED");
     return (int)fails;
 }

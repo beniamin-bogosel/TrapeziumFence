@@ -93,7 +93,8 @@ whole-domain verification:
 
 Important options:
 
-- `--theta T`: threshold to certify below.
+- `--theta T`: exact decimal threshold to certify below.  The literal is
+  parsed as a rational for proof comparisons; the printed double is diagnostic.
 - `--wfloor W`: stop splitting unresolved boxes once their largest scaled width
   is at most `W`.
 - `--form natural|centered`: direct interval extension or mean-value form.
@@ -116,6 +117,9 @@ Important options:
 - Certificate files are self-describing: the verifier rejects missing metadata
   and rejects command-line `theta`, `form`, or `half` values that disagree with
   the file.
+- Threshold comparisons are exact in the supplied decimal `theta`: certified
+  leaves compare Arb upper endpoints to the corresponding rational, and
+  `--flat-area-cert` compares to the exact rational `theta^2/4`.
 - Refinement files can be assembled with `--assemble`; each refinement is
   structurally checked against the survivor boxes it replaces.
 - Centered and natural enclosures are intersected when possible; if finite

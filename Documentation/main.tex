@@ -110,6 +110,11 @@ The C implementation is arranged in layers:
   that discard boxes containing no admissible normalized quadrilateral, plus
   the flat/small-area certificate \code{box\_small\_area\_certifies\_low}.
 
+  \item[\code{threshold.c}, \code{threshold.h}] Exact decimal threshold parser
+  and rational comparison helpers.  The literal passed to \code{--theta} is
+  the mathematical constant used by certification; printed doubles are only
+  diagnostic.
+
   \item[\code{search.c}, \code{search.h}] Dyadic subdivision engine.  It
   classifies boxes as discarded, certified low, flat-area low, nonoptimal, or
   surviving; splits unresolved boxes; collects statistics; and can seed a
@@ -256,10 +261,10 @@ original root box.
 
 \subsection{Self-Describing Certificate Metadata}
 
-Every JSONL certificate begins with a metadata line of schema version \(2\).
-It records the threshold \(\theta\), enclosure form, half-domain flag,
-auxiliary-certificate flags, precision provenance, root box, and splitter
-spans.  Leaf lines follow this first line.
+Every JSONL certificate begins with a metadata line of schema version \(3\).
+It records the threshold \(\theta\) as an exact decimal string, enclosure form,
+half-domain flag, auxiliary-certificate flags, precision provenance, root box,
+and splitter spans.  Leaf lines follow this first line.
 
 The verifier reads \(\theta\), \code{form}, and \code{half} from the file.
 Supplying \code{--theta}, \code{--form}, or \code{--half} during
@@ -268,10 +273,16 @@ the certificate metadata, verification fails with \code{FAIL[meta]}.  This
 prevents a certificate for one threshold from being silently audited as a
 different, usually weaker, statement.
 
+The exact \(\theta\) literal is parsed as a rational number.  Certified leaves
+compare the Arb upper endpoint to this rational.  The flat-area certificate
+compares the area upper endpoint to the exact rational \(\theta^2/4\), not to a
+rounded floating-point value.  The metadata field \code{theta\_approx} and
+printed decimal summaries are diagnostic only.
+
 The assembler requires metadata in every input file and checks that the global
 claim parameters are compatible before it replaces survivor leaves.  Old JSONL
-files without metadata must be regenerated with the current program before
-they can be audited or assembled.
+files without schema-3 metadata must be regenerated with the current program
+before they can be audited or assembled.
 
 \subsection{Certificate Semantics}
 
@@ -540,6 +551,22 @@ search\_run\_seeded & Starts a search from explicit seed boxes, used by \code{--
 \bottomrule
 \end{longtable}
 
+\subsection{\code{threshold.c}/\code{threshold.h}}
+
+\begin{longtable}{>{\ttfamily}p{0.30\textwidth}p{0.62\textwidth}}
+\toprule
+Function & Purpose \\
+\midrule
+\endhead
+parse\_exp10 & Static helper parsing the exponent part of a decimal literal. \\
+threshold\_parse\_fmpq & Parses a finite decimal literal, including optional scientific notation, as the exact rational represented by its characters. \\
+threshold\_set\_arb & Converts an exact threshold literal to an Arb ball at the requested precision. \\
+threshold\_arf\_leq & Converts an Arb upper endpoint, represented as an \code{arf\_t}, to an exact rational and compares it with the exact threshold rational. \\
+threshold\_area\_ub\_leq & Compares an exact Arb area upper endpoint with the exact rational \(\theta^2/4\). \\
+threshold\_to\_double & Converts the literal to a double for display and adaptive-precision heuristics only; it is not used for certification. \\
+\bottomrule
+\end{longtable}
+
 \subsection{\code{cert.c}/\code{cert.h}}
 
 \begin{longtable}{>{\ttfamily}p{0.30\textwidth}p{0.62\textwidth}}
@@ -548,7 +575,7 @@ Function & Purpose \\
 \midrule
 \endhead
 status\_name & Static conversion from leaf status enum to JSON status string. \\
-cert\_write\_meta & Writes the schema-2 metadata line containing threshold, form, half-domain flag, auxiliary flags, precision provenance, root box, and splitter spans. \\
+cert\_write\_meta & Writes the schema-3 metadata line containing exact threshold literal, threshold display approximation, form, half-domain flag, auxiliary flags, precision provenance, root box, and splitter spans. \\
 cert\_write\_leaf & Leaf callback that writes one JSON line containing box, status, active item, enclosure, and precision. \\
 parse\_meta\_line & Static parser for the metadata JSON line. \\
 parse\_line & Static parser for certificate leaf JSON lines. \\
@@ -606,7 +633,7 @@ tests/test\_cert\_cli.sh & Builds a tiny certificate, verifies it from metadata 
 The executable is \code{fence\_validate}.  The principal options are:
 
 \begin{description}
-  \item[\code{--theta T}] Threshold for certification.
+  \item[\code{--theta T}] Exact decimal threshold for certification.  The literal is parsed as a rational for proof comparisons.
   \item[\code{--wfloor W}] Scaled-width floor at which unresolved boxes become survivors.
   \item[\code{--prec P}] Starting Arb precision in bits.
   \item[\code{--maxprec M}] Cap for adaptive precision.
@@ -829,6 +856,10 @@ metadata rather than used to define the certificate claim.
   verifier ignores the recorded enclosure and recomputes claims from the box,
   the metadata threshold, metadata form, metadata half-domain flag, and the
   requested verification precision.
+
+  \item The metadata \code{theta} string is the exact proof threshold.  The
+  \code{theta\_approx} field and printed threshold doubles are for human
+  readability and adaptive search heuristics only.
 
   \item A run stopped by \code{--max-leaves} is useful for debugging but is not
   a complete certificate and should fail the full coverage check.

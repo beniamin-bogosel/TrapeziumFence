@@ -25,8 +25,8 @@ int box_certainly_inadmissible(const double lo[4], const double hi[4],
 /* Low-fence certificate for flat boxes.  For admissible quadrilaterals,
  * the explicit AB-to-CD fence satisfies L/sqrt(A) <= 2 sqrt(A).  Therefore a
  * box is certified below theta if its interval upper bound for area A is at
- * most theta^2/4. */
+ * most the exact rational theta^2/4, where theta is parsed from theta_str. */
 int box_small_area_certifies_low(const double lo[4], const double hi[4],
-                                 double theta, slong prec);
+                                 const char *theta_str, slong prec);
 
 #endif /* TRAP_ADMISSIBLE_H */

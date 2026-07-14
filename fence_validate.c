@@ -15,6 +15,7 @@
 #include "search.h"
 #include "cert.h"
 #include "series.h"
+#include "threshold.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -23,7 +24,7 @@
 static void usage(const char *prog) {
     fprintf(stderr,
 "Usage: %s [options]\n"
-"  --theta T        threshold (default 1.04)\n"
+"  --theta T        exact decimal threshold (default 1.04)\n"
 "  --wfloor W       survivor scaled-width floor (default 1e-2)\n"
 "  --prec P         starting arb precision in bits (default 53)\n"
 "  --maxprec M      adaptive precision cap (default 256)\n"
@@ -49,7 +50,8 @@ static void usage(const char *prog) {
 
 int main(int argc, char **argv) {
     search_params p;
-    p.theta = 1.04;
+    snprintf(p.theta_str, sizeof p.theta_str, "1.04");
+    p.theta = threshold_to_double(p.theta_str);
     p.wfloor = 1e-2;
     p.prec = 53;
     p.maxprec = 256;
@@ -78,7 +80,17 @@ int main(int argc, char **argv) {
 
     for (int i = 1; i < argc; i++) {
         if (!strcmp(argv[i], "--theta") && i + 1 < argc) {
-            p.theta = atof(argv[++i]);
+            const char *s = argv[++i];
+            fmpq_t q;
+            fmpq_init(q);
+            int bad = threshold_parse_fmpq(q, s);
+            fmpq_clear(q);
+            if (bad || strlen(s) >= sizeof p.theta_str) {
+                fprintf(stderr, "invalid --theta literal %s\n", s);
+                return 2;
+            }
+            snprintf(p.theta_str, sizeof p.theta_str, "%s", s);
+            p.theta = threshold_to_double(p.theta_str);
             theta_set = 1;
         }
         else if (!strcmp(argv[i], "--wfloor") && i + 1 < argc) p.wfloor = atof(argv[++i]);
@@ -160,7 +172,7 @@ int main(int argc, char **argv) {
     }
 
     if (verify_path) {
-        int fails = cert_verify(verify_path, p.theta, theta_set,
+        int fails = cert_verify(verify_path, p.theta_str, theta_set,
                                 p.form, form_set, p.half, half_set, p.prec);
         series_cleanup();
         return fails ? 1 : 0;

@@ -2,6 +2,7 @@
 #include "search.h"
 #include "admissible.h"
 #include "series.h"
+#include "threshold.h"
 #include <stdlib.h>
 #include <string.h>
 
@@ -61,7 +62,7 @@ static int classify(const box_t *b, const search_params *p,
     }
     slong prec = p->prec;
     if (p->flat_area_cert &&
-        box_small_area_certifies_low(b->lo, b->hi, p->theta, prec)) {
+        box_small_area_certifies_low(b->lo, b->hi, p->theta_str, prec)) {
         *used_prec = prec;
         *item = -2;
         return LEAF_FLAT_AREA;
@@ -85,7 +86,7 @@ static int classify(const box_t *b, const search_params *p,
      * A non-finite enclosure (functionals failed to bound this coarse box) can
      * never certify -- the box must be split (or retained at the floor). */
     int certified = arb_is_finite(fenc) && arf_is_finite(fhi)
-                    && (arf_cmp_d(fhi, p->theta) <= 0);
+                    && threshold_arf_leq(fhi, p->theta_str);
 
     /* adaptive precision: if marginally undecided, retry once at higher prec */
     if (!certified && p->adaptive_prec && prec < p->maxprec) {
@@ -97,7 +98,7 @@ static int classify(const box_t *b, const search_params *p,
             *item = act2;
             *used_prec = hp;
             arb_get_ubound_arf(fhi, fenc, hp);
-            certified = (arf_cmp_d(fhi, p->theta) <= 0);
+            certified = threshold_arf_leq(fhi, p->theta_str);
             prec = hp;
         }
     }

@@ -30,7 +30,7 @@ endif
 CFLAGS  += $(ARB_DEF) $(OMPFLAG)
 LDLIBS  := $(ARB_LIBS) -lm
 
-CORE_SRC := geom.c series.c functionals.c admissible.c search.c cert.c
+CORE_SRC := geom.c series.c functionals.c admissible.c search.c threshold.c cert.c
 CORE_OBJ := $(CORE_SRC:.c=.o)
 
 .PHONY: all clean test

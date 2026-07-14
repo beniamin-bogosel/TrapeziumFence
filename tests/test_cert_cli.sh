@@ -15,7 +15,12 @@ trap cleanup EXIT HUP INT TERM
 common="--theta 1.0496 --prec 70 --form centered --serial --flat-area-cert --pair-eq-cert"
 
 ./fence_validate $common --wfloor 0.5 --out "$cert" >/dev/null
+if ! grep -q '"schema":3,"theta":"1.0496"' "$cert"; then
+    echo "certificate metadata does not record schema-3 exact theta" >&2
+    exit 1
+fi
 ./fence_validate --verify "$cert" --prec 70 --serial >/dev/null
+./fence_validate --verify "$cert" --theta 1.049600 --prec 70 --serial >/dev/null
 
 if ./fence_validate --verify "$cert" --theta 1.50 --prec 70 --serial >"$wrong" 2>&1; then
     echo "wrong-theta certificate unexpectedly verified" >&2

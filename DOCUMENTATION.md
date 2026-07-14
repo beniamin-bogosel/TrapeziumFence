@@ -19,6 +19,8 @@ threshold experiment.
 - `admissible.h`, `admissible.c`: conservative discard tests for boxes that
   certainly contain no normalized admissible quadrilateral, plus
   `box_small_area_certifies_low`, the flat/small-area low-fence certificate.
+- `threshold.h`, `threshold.c`: exact decimal threshold parsing and rational
+  comparisons used by the low-fence and flat-area certificates.
 
 ## Search And Certificates
 
@@ -48,13 +50,18 @@ threshold experiment.
 
 ## Certificate Reading
 
-Every certificate begins with a metadata JSON line recording the schema,
-threshold `theta`, enclosure `form`, `half` flag, auxiliary-certificate flags,
-run precision, and root box.  The verifier reads `theta`, `form`, and `half`
-from this line.  Supplying those options to `--verify` is now only a
-cross-check; a mismatch is reported as `FAIL[meta]`.  Old JSONL files without
-metadata must be regenerated or assembled with the current program before they
-can be audited.
+Every certificate begins with a schema-3 metadata JSON line recording the
+threshold `theta` as an exact decimal string, enclosure `form`, `half` flag,
+auxiliary-certificate flags, run precision, and root box.  The verifier reads
+`theta`, `form`, and `half` from this line.  Supplying those options to
+`--verify` is now only a cross-check; a mismatch is reported as `FAIL[meta]`.
+Old JSONL files without schema-3 metadata must be regenerated with the current
+program before they can be audited.
+
+The exact `theta` literal is parsed as a rational.  Certified leaves compare
+the Arb upper endpoint to this rational, and the flat-area certificate compares
+the area upper endpoint to the exact rational `theta^2/4`.  Numeric
+`theta_approx` fields and printed doubles are diagnostic only.
 
 For a threshold `theta`, a verified certificate proves:
 

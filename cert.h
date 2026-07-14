@@ -1,7 +1,7 @@
 /* cert.h -- JSONL certificate stream writer and stateless re-check reader.
  *
  * The first JSON line is metadata:
- *   {"type":"meta","schema":2,"theta":<double>,"form":"natural|centered",
+ *   {"type":"meta","schema":3,"theta":"<exact decimal>","form":"natural|centered",
  *    "half":true|false, ...}
  *
  * Subsequent JSON lines contain one leaf each:
@@ -37,7 +37,7 @@ void cert_write_leaf(void *ctx, const double lo[4], const double hi[4],
  *   prec              : precision to re-verify at (may differ from the file);
  * Returns 0 if every leaf's claim holds, else the number of failures.
  * Prints a summary to stdout. */
-int cert_verify(const char *path, double theta, int theta_set,
+int cert_verify(const char *path, const char *theta_str, int theta_set,
                 enclosure_form form, int form_set,
                 int half, int half_set, slong prec);
 
