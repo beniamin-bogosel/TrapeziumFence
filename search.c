@@ -49,6 +49,12 @@ static int widest_coord(const box_t *b, double *scaled_width) {
     return best;
 }
 
+static int certifies_below_threshold(const arb_t fenc, const arf_t fhi,
+                                     const search_params *p) {
+    return arb_is_finite(fenc) && arf_is_finite(fhi) &&
+           threshold_arf_leq(fhi, p->theta_str);
+}
+
 /* Classify one box.  Returns LEAF_* if it is a leaf, or -1 if it must be split
  * (children written to c0,c1).  Fills *fenc (min-enclosure) and *item unless
  * discarded.  Uses/raises prec adaptively; *used_prec reports what was used. */
@@ -85,8 +91,7 @@ static int classify(const box_t *b, const search_params *p,
     /* Certify only on a finite enclosure with a finite upper bound <= theta.
      * A non-finite enclosure (functionals failed to bound this coarse box) can
      * never certify -- the box must be split (or retained at the floor). */
-    int certified = arb_is_finite(fenc) && arf_is_finite(fhi)
-                    && threshold_arf_leq(fhi, p->theta_str);
+    int certified = certifies_below_threshold(fenc, fhi, p);
 
     /* adaptive precision: if marginally undecided, retry once at higher prec */
     if (!certified && p->adaptive_prec && prec < p->maxprec) {
@@ -98,7 +103,7 @@ static int classify(const box_t *b, const search_params *p,
             *item = act2;
             *used_prec = hp;
             arb_get_ubound_arf(fhi, fenc, hp);
-            certified = threshold_arf_leq(fhi, p->theta_str);
+            certified = certifies_below_threshold(fenc, fhi, p);
             prec = hp;
         }
     }
