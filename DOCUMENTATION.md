@@ -44,6 +44,9 @@ threshold experiment.
 
 - `analyze_cert.py`: safe summary of certified-low volume, nonoptimal volume,
   and unresolved survivor neighborhood around the reference trapezoid.
+- `analyze_refinement_distances.py`: compares each recorded refinement's
+  survivor rectangles to `T*`, reporting diagonal-style Euclidean upper bounds
+  for `C`, `D`, and the full four-coordinate product rectangle.
 - `tests/test_trap.c`: smoke tests for the reference trapezoid, pair-bound
   formula agreement, series evaluation, admissibility, one sub-threshold
   certification, the pair-equality nonoptimality certificate, and the
@@ -256,6 +259,11 @@ Commands:
   --form centered --serial --flat-area-cert --pair-eq-cert \
   --refine flat_pair_refine_w000625.jsonl \
   --out flat_pair_refine_w0003125.jsonl --stats
+
+./fence_validate --theta 1.0496 --wfloor 0.0015625 --prec 70 \
+  --form centered --serial --flat-area-cert --pair-eq-cert \
+  --refine flat_pair_refine_w0003125.jsonl \
+  --out flat_pair_refine_w00015625.jsonl --stats
 ```
 
 Observed data:
@@ -266,14 +274,15 @@ Observed data:
 | Refine 1 | 0.0125 | 117.585 | 360798 | 2967 | 282735 | 0 | 50065 | 25031 | <= 3.72991e-4 |
 | Refine 2 | 0.00625 | 35.091 | 119594 | 28 | 51386 | 0 | 55878 | 12302 | <= 1.14571e-5 |
 | Refine 3 | 0.003125 | 19.360 | 66134 | 0 | 17312 | 0 | 39816 | 9006 | <= 5.24218e-7 |
+| Refine 4 | 0.0015625 | 14.399 | 49864 | 0 | 10580 | 0 | 31046 | 8238 | <= 2.99697e-8 |
 
 After the last recorded refinement, all remaining survivors were certainly
 admissible and the boundary-straddling survivor volume was zero.  The final
 survivor union is contained in
 
 ```text
-R_C = [0.6171875, 0.703125] x [0.662109375, 0.748046875],
-R_D = [0.296875, 0.3828125] x [0.662109375, 0.748046875].
+R_C = [0.626953125, 0.669921875] x [0.677734375, 0.7353515625],
+R_D = [0.330078125, 0.373046875] x [0.677734375, 0.7353515625].
 ```
 
 The reference trapezoid is
@@ -287,6 +296,27 @@ f(T*) ~= 1.04968581549.
 The equal-axis PNG figure is
 `Documentation/figures/current_survivor_rectangles.png`.
 
+Distance-to-`T*` analyzer:
+
+```sh
+python3 analyze_refinement_distances.py
+```
+
+The analyzer takes the survivor bounding rectangles from each refinement and
+computes farthest-corner distances from
+`C* = (0.6417451566, 0.7071006812)` and
+`D* = (0.3582548434, 0.7071006812)`.  The four-dimensional product bound is
+`sqrt(C_bound^2 + D_bound^2)`.  `max leaf 4D bound` is the tighter maximum over
+individual survivor leaves rather than over the displayed product rectangle.
+
+| File | Survivors | C rectangle bound | D rectangle bound | 4D product bound | Max leaf 4D bound |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| `flat_pair_cert_w0025.jsonl` | 69787 | 0.925578382 | 0.898853283 | 1.2902064 | 0.832882346 |
+| `flat_pair_refine_w00125.jsonl` | 25031 | 0.647089329 | 0.61938547 | 0.895747152 | 0.640574016 |
+| `flat_pair_refine_w000625.jsonl` | 12302 | 0.172000006 | 0.172000006 | 0.243244742 | 0.159888122 |
+| `flat_pair_refine_w0003125.jsonl` | 9006 | 0.0761032378 | 0.0761032378 | 0.107626231 | 0.0706509998 |
+| `flat_pair_refine_w00015625.jsonl` | 8238 | 0.0406977567 | 0.0406977567 | 0.0575553195 | 0.0457130935 |
+
 Assemble the full-domain certificate:
 
 ```sh
@@ -295,23 +325,24 @@ Assemble the full-domain certificate:
   flat_pair_refine_w00125.jsonl \
   flat_pair_refine_w000625.jsonl \
   flat_pair_refine_w0003125.jsonl \
-  --out flat_pair_full_w0003125.jsonl
+  flat_pair_refine_w00015625.jsonl \
+  --out flat_pair_full_w00015625.jsonl
 ```
 
 Then audit the assembled certificate:
 
 ```sh
-./fence_validate --verify flat_pair_full_w0003125.jsonl \
+./fence_validate --verify flat_pair_full_w00015625.jsonl \
   --prec 70 --serial
 ```
 
 Recorded assembled audit:
 
 ```text
-verify: 655164 leaves  (discard 14550, certify 467752, flat_area 213,
-        nonoptimal 163643, survivor 9006)  prec=70
+verify: 696022 leaves  (discard 14550, certify 478332, flat_area 213,
+        nonoptimal 194689, survivor 8238)  prec=70
 verify: dyadic partition coverage of the full root box: PASSED
-verify: worst re-checked certified f_hi = 1.04959998999232
+verify: worst re-checked certified f_hi = 1.04959999626394
 verify: 0 failures -> AUDIT PASSED
 ```
 

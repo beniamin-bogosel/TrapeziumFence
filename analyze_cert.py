@@ -84,7 +84,8 @@ def bbox(boxes):
 
 def load(path):
     with open(path) as fh:
-        return [json.loads(line) for line in fh]
+        rows = [json.loads(line) for line in fh]
+    return [o for o in rows if o.get("type") != "meta" and "status" in o]
 
 
 def main():

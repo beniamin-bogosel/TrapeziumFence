@@ -80,6 +80,8 @@ Example:
 ./fence_validate --verify cert_104.jsonl --prec 80 --serial
 
 python3 analyze_cert.py cert_104.jsonl --theta 1.04
+
+python3 analyze_refinement_distances.py
 ```
 
 For refinement chains, assemble the base file and all refinement files before
@@ -110,6 +112,10 @@ Important options:
   chain and write one full-domain certificate.
 - `--max-leaves N`: debugging limit only; a truncated run will not pass full
   certificate coverage verification.
+
+`analyze_refinement_distances.py` is a convenience analyzer for the recorded
+refinement chain.  It computes diagonal-style upper bounds from each survivor
+rectangle to the reference trapezoid `T*`.
 
 ## Soundness Fixes Relative To The Starting Snapshot
 

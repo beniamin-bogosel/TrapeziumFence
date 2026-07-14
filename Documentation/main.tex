@@ -138,6 +138,11 @@ The C implementation is arranged in layers:
   \item[\code{analyze_cert.py}] Safe postprocessing of certificate files.  It
   does not replace certificate verification.
 
+  \item[\code{analyze_refinement_distances.py}] Distance-to-\(T^\ast\)
+  postprocessor for the recorded refinement chain.  It reports
+  diagonal-style bounds from each survivor rectangle to the reference
+  trapezoid.
+
   \item[\code{tests/test_trap.c}] Unit tests for the reference trapezoid,
   pair-bound formula agreement, series evaluation, inadmissibility, one
   interior certification, the pair-equality certificate, and the flat-area
@@ -719,6 +724,8 @@ Refine 2 & 0.00625 & 35.091 & 119594 & 28 & 51386 & 0 & 55878 & 12302 &
 \(1.14571{\times}10^{-5}\) \\
 Refine 3 & 0.003125 & 19.360 & 66134 & 0 & 17312 & 0 & 39816 & 9006 &
 \(5.24218{\times}10^{-7}\) \\
+Refine 4 & 0.0015625 & 14.399 & 49864 & 0 & 10580 & 0 & 31046 & 8238 &
+\(2.99697{\times}10^{-8}\) \\
 \bottomrule
 \end{longtable}
 \endgroup
@@ -744,6 +751,11 @@ The commands were:
   --form centered --serial --flat-area-cert --pair-eq-cert \
   --refine flat_pair_refine_w000625.jsonl \
   --out flat_pair_refine_w0003125.jsonl --stats
+
+./fence_validate --theta 1.0496 --wfloor 0.0015625 --prec 70 \
+  --form centered --serial --flat-area-cert --pair-eq-cert \
+  --refine flat_pair_refine_w0003125.jsonl \
+  --out flat_pair_refine_w00015625.jsonl --stats
 \end{lstlisting}
 
 \subsection{Survivor Analysis}
@@ -757,16 +769,46 @@ survivor volume.  The survivor union is contained in the product
 where
 \[
 \begin{aligned}
-R_C&=[0.6171875,\ 0.703125]\times[0.662109375,\ 0.748046875],\\
-R_D&=[0.296875,\ 0.3828125]\times[0.662109375,\ 0.748046875].
+R_C&=[0.626953125,\ 0.669921875]\times[0.677734375,\ 0.7353515625],\\
+R_D&=[0.330078125,\ 0.373046875]\times[0.677734375,\ 0.7353515625].
 \end{aligned}
 \]
 The survivor volume bound is
 \[
-  5.24218\times 10^{-7},
+  2.99697\times 10^{-8},
 \]
 and the farthest point of a survivor box from \(T^\ast\), in the coordinate box
-metric used by the analysis script, is \(0.07065\).
+metric used by the analysis script, is \(0.045713093\).
+
+The command
+\begin{lstlisting}
+python3 analyze_refinement_distances.py
+\end{lstlisting}
+computes diagonal-style Euclidean upper bounds from each refinement's survivor
+rectangles to the reference trapezoid.  For the displayed product rectangle
+\(R_C\times R_D\), the \(C\)- and \(D\)-bounds are farthest-corner distances
+from \(C^\ast\) and \(D^\ast\), and the four-dimensional product bound is their
+Euclidean combination.
+
+\begin{center}
+\scriptsize
+\begin{tabular}{lrrrrr}
+\toprule
+File & Survivors & \(C\) bound & \(D\) bound & 4D product & Max leaf 4D \\
+\midrule
+\code{flat_pair_cert_w0025.jsonl} & 69787 & 0.925578382 & 0.898853283 &
+1.2902064 & 0.832882346 \\
+\code{flat_pair_refine_w00125.jsonl} & 25031 & 0.647089329 & 0.61938547 &
+0.895747152 & 0.640574016 \\
+\code{flat_pair_refine_w000625.jsonl} & 12302 & 0.172000006 & 0.172000006 &
+0.243244742 & 0.159888122 \\
+\code{flat_pair_refine_w0003125.jsonl} & 9006 & 0.0761032378 & 0.0761032378 &
+0.107626231 & 0.0706509998 \\
+\code{flat_pair_refine_w00015625.jsonl} & 8238 & 0.0406977567 & 0.0406977567 &
+0.0575553195 & 0.0457130935 \\
+\bottomrule
+\end{tabular}
+\end{center}
 
 \begin{figure}[h]
 \centering
@@ -800,33 +842,34 @@ verification:
   flat_pair_refine_w00125.jsonl \
   flat_pair_refine_w000625.jsonl \
   flat_pair_refine_w0003125.jsonl \
-  --out flat_pair_full_w0003125.jsonl
+  flat_pair_refine_w00015625.jsonl \
+  --out flat_pair_full_w00015625.jsonl
 \end{lstlisting}
 
 The recorded assembly produced
 \[
-  655{,}164
+  696{,}022
 \]
 leaves.  The assembled full-domain certificate was then audited by
 
 \begin{lstlisting}
-./fence_validate --verify flat_pair_full_w0003125.jsonl \
+./fence_validate --verify flat_pair_full_w00015625.jsonl \
   --prec 70 --serial
 \end{lstlisting}
 
 with output
 \[
 \begin{aligned}
-&655{,}164\text{ leaves},\quad 14{,}550\text{ discarded},\quad
-467{,}752\text{ certified},\\
-&213\text{ flat-area},\quad 163{,}643\text{ nonoptimal},\quad
-9{,}006\text{ survivors}.
+&696{,}022\text{ leaves},\quad 14{,}550\text{ discarded},\quad
+478{,}332\text{ certified},\\
+&213\text{ flat-area},\quad 194{,}689\text{ nonoptimal},\quad
+8{,}238\text{ survivors}.
 \end{aligned}
 \]
 The dyadic partition coverage of the full root box passed, the worst
 rechecked certified upper bound was
 \[
-  1.04959998999232 \le 1.0496,
+  1.04959999626394 \le 1.0496,
 \]
 and the audit reported zero failures.
 
