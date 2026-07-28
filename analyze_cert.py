@@ -12,6 +12,9 @@ import json
 import math
 import sys
 
+# Public notation: D=(0,0), C=(1,0), B=(b1,b2), A=(a1,a2).
+# The JSONL coordinate order is still the implementation order
+# (b1,b2,a1,a2).
 TSTAR = (0.6417451566, 0.7071006812, 0.3582548434, 0.7071006812)
 
 
@@ -88,6 +91,13 @@ def load(path):
     return [o for o in rows if o.get("type") != "meta" and "status" in o]
 
 
+def print_public_rectangles(box):
+    print(f"  A: [{box[2][0]:.10g}, {box[2][1]:.10g}] x "
+          f"[{box[3][0]:.10g}, {box[3][1]:.10g}]")
+    print(f"  B: [{box[0][0]:.10g}, {box[0][1]:.10g}] x "
+          f"[{box[1][0]:.10g}, {box[1][1]:.10g}]")
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("cert")
@@ -130,10 +140,8 @@ def main():
         return 0
 
     b = bbox(surv)
-    names = ("c1", "c2", "d1", "d2")
     print("\nUnresolved survivor union:")
-    for name, (lo, hi) in zip(names, b):
-        print(f"  {name}: [{lo:.10g}, {hi:.10g}]")
+    print_public_rectangles(b)
 
     dists = [folded_dist(o["box"], args.no_mirror) for o in surv]
     near = min(d[0] for d in dists)
@@ -148,8 +156,7 @@ def main():
         core_d = [folded_dist(o["box"], args.no_mirror) for o in core]
         print("\nCertainly-admissible survivor core:")
         print(f"  boxes: {len(core)}  volume {sum(box_volume(o['box']) for o in core):.12g}")
-        for name, (lo, hi) in zip(names, core_box):
-            print(f"  {name}: [{lo:.10g}, {hi:.10g}]")
+        print_public_rectangles(core_box)
         print(f"  farthest box point from T*: {max(d[1] for d in core_d):.8g}")
     print("\nBoundary-straddling survivors:")
     print(f"  boxes: {len(shell)}  volume {sum(box_volume(o['box']) for o in shell):.12g}")

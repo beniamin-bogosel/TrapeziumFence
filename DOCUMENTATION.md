@@ -46,7 +46,7 @@ threshold experiment.
   and unresolved survivor neighborhood around the reference trapezoid.
 - `analyze_refinement_distances.py`: compares each recorded refinement's
   survivor rectangles to `T*`, reporting diagonal-style Euclidean upper bounds
-  for `C`, `D`, and the full four-coordinate product rectangle.
+  for `A`, `B`, and the full four-coordinate product rectangle.
 - `tests/test_trap.c`: smoke tests for the reference trapezoid, pair-bound
   formula agreement, series evaluation, admissibility, one sub-threshold
   certification, the pair-equality nonoptimality certificate, and the
@@ -90,49 +90,54 @@ survivor union there is no possible above-threshold optimizer.
 
 ## Cells And Splitting
 
-The search space is four-dimensional, with coordinates
+The public notation uses the normalized quadrilateral
+`D=(0,0)`, `C=(1,0)`, `B=(b1,b2)`, `A=(a1,a2)`, in the cyclic order
+`D,C,B,A`.  The search space is four-dimensional, with public coordinates
 
 ```text
-(c1, c2, d1, d2)
+(b1, b2, a1, a2)
 ```
 
-where `C = (c1,c2)` and `D = (d1,d2)`.  A cell is always a rectangular product
+where `B = (b1,b2)` and `A = (a1,a2)`.  The C implementation and JSONL files
+retain the legacy slot order `(c1,c2,d1,d2)`; these slots correspond to
+`(b1,b2,a1,a2)` in the notation used in this document.  A cell is always a
+rectangular product
 
 ```text
-[c1_lo,c1_hi] x [c2_lo,c2_hi] x [d1_lo,d1_hi] x [d2_lo,d2_hi].
+[b1_lo,b1_hi] x [b2_lo,b2_hi] x [a1_lo,a1_hi] x [a2_lo,a2_hi].
 ```
 
 Equivalently, a cell is a pair of planar rectangles:
 
 ```text
-C-cell = [c1_lo,c1_hi] x [c2_lo,c2_hi],
-D-cell = [d1_lo,d1_hi] x [d2_lo,d2_hi].
+A-cell = [a1_lo,a1_hi] x [a2_lo,a2_hi],
+B-cell = [b1_lo,b1_hi] x [b2_lo,b2_hi].
 ```
 
 The initial rectangles are
 
 ```text
-C in [0,2] x [0,1],
-D in [-1,1] x [0,1].
+A in [-1,1] x [0,1],
+B in [0,2] x [0,1].
 ```
 
 The splitter chooses the coordinate with largest scaled width, using the root
 spans `(2,1,2,1)`:
 
 ```text
-scaled_width(c1) = width(c1)/2
-scaled_width(c2) = width(c2)/1
-scaled_width(d1) = width(d1)/2
-scaled_width(d2) = width(d2)/1.
+scaled_width(b1) = width(b1)/2
+scaled_width(b2) = width(b2)/1
+scaled_width(a1) = width(a1)/2
+scaled_width(a2) = width(a2)/1.
 ```
 
 It then halves only that coordinate interval.  If the chosen coordinate is
-`c1` or `c2`, the C-cell is split and the D-cell is unchanged.  If the chosen
-coordinate is `d1` or `d2`, the D-cell is split and the C-cell is unchanged.
+`b1` or `b2`, the B-cell is split and the A-cell is unchanged.  If the chosen
+coordinate is `a1` or `a2`, the A-cell is split and the B-cell is unchanged.
 
-The first coordinate round gives equal-axis planar grids: C is split into four
-rectangles and D is split into four rectangles.  Combining one C rectangle with
-one D rectangle gives `4 * 4 = 16` four-dimensional cells.
+The first coordinate round gives equal-axis planar grids: A is split into four
+rectangles and B is split into four rectangles.  Combining one A rectangle with
+one B rectangle gives `4 * 4 = 16` four-dimensional cells.
 
 ## Auxiliary Certificates
 
@@ -153,33 +158,33 @@ and 5 being exact pair-construction values, not arbitrary upper majorants.
 Let
 
 ```text
-A = Area(ABCD),    h = max(c2,d2).
+A_Q = Area(DCBA),    h = max(a2,b2).
 ```
 
-For the fence associated to the pair `AB,CD`, a direct geometric construction
+For the fence associated to the pair `DC,BA`, a direct geometric construction
 gives
 
 ```text
-L_AB,CD <= h.
+L_DC,BA <= h.
 ```
 
 For admissible convex quadrilaterals in the normalized domain,
 
 ```text
-A = area(ABC) + area(ACD) > c2/2,
-A = area(ABD) + area(BCD) > d2/2.
+A_Q = area(DCB) + area(DBA) > b2/2,
+A_Q = area(DCA) + area(CBA) > a2/2.
 ```
 
 Hence `h <= 2A`, and therefore
 
 ```text
-L_AB,CD / sqrt(A) <= 2 sqrt(A).
+L_DC,BA / sqrt(A_Q) <= 2 sqrt(A_Q).
 ```
 
 If interval arithmetic proves `A_ub <= theta^2/4`, then
 
 ```text
-L_AB,CD / sqrt(A) <= theta,
+L_DC,BA / sqrt(A_Q) <= theta,
 ```
 
 so the box is certified low.  For `theta = 1.0496`,
@@ -270,6 +275,11 @@ Commands:
   --form centered --serial --flat-area-cert --pair-eq-cert \
   --refine flat_pair_refine_w0003125.jsonl \
   --out flat_pair_refine_w00015625.jsonl --stats
+
+./fence_validate --theta 1.0496 --wfloor 0.00078125 --prec 70 \
+  --form centered --serial --flat-area-cert --pair-eq-cert \
+  --refine flat_pair_refine_w00015625.jsonl \
+  --out flat_pair_refine_w000078125.jsonl --stats
 ```
 
 Observed data:
@@ -281,26 +291,29 @@ Observed data:
 | Refine 2 | 0.00625 | 35.091 | 119594 | 28 | 51386 | 0 | 55878 | 12302 | <= 1.14571e-5 |
 | Refine 3 | 0.003125 | 19.360 | 66134 | 0 | 17312 | 0 | 39816 | 9006 | <= 5.24218e-7 |
 | Refine 4 | 0.0015625 | 14.399 | 49864 | 0 | 10580 | 0 | 31046 | 8238 | <= 2.99697e-8 |
+| Refine 5 | 0.00078125 | 14.503 | 50504 | 0 | 9696 | 0 | 29790 | 11018 | <= 2.5052e-9 |
 
 After the last recorded refinement, all remaining survivors were certainly
 admissible and the boundary-straddling survivor volume was zero.  The final
 survivor union is contained in
 
 ```text
-R_C = [0.626953125, 0.669921875] x [0.677734375, 0.7353515625],
-R_D = [0.330078125, 0.373046875] x [0.677734375, 0.7353515625].
+R_A = [0.3427734375, 0.369140625] x [0.6865234375, 0.7270507812],
+R_B = [0.630859375, 0.6572265625] x [0.6865234375, 0.7270507812].
 ```
 
 The reference trapezoid is
 
 ```text
-C* = (0.6417451566, 0.7071006812),
-D* = (0.3582548434, 0.7071006812),
+A* = (0.3582548434, 0.7071006812),
+B* = (0.6417451566, 0.7071006812),
 f(T*) ~= 1.04968581549.
 ```
 
 The equal-axis PNG figure is
-`Documentation/figures/current_survivor_rectangles.png`.
+`Documentation/figures/current_survivor_rectangles.png`.  The overview PNG
+showing these rectangles inside the conjectured trapezium neighborhood is
+`Documentation/figures/survivor_rectangles_overview.png`.
 
 Distance-to-`T*` analyzer:
 
@@ -310,18 +323,19 @@ python3 analyze_refinement_distances.py
 
 The analyzer takes the survivor bounding rectangles from each refinement and
 computes farthest-corner distances from
-`C* = (0.6417451566, 0.7071006812)` and
-`D* = (0.3582548434, 0.7071006812)`.  The four-dimensional product bound is
-`sqrt(C_bound^2 + D_bound^2)`.  `max leaf 4D bound` is the tighter maximum over
+`A* = (0.3582548434, 0.7071006812)` and
+`B* = (0.6417451566, 0.7071006812)`.  The four-dimensional product bound is
+`sqrt(A_bound^2 + B_bound^2)`.  `max leaf 4D bound` is the tighter maximum over
 individual survivor leaves rather than over the displayed product rectangle.
 
-| File | Survivors | C rectangle bound | D rectangle bound | 4D product bound | Max leaf 4D bound |
+| File | Survivors | A rectangle bound | B rectangle bound | 4D product bound | Max leaf 4D bound |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| `flat_pair_cert_w0025.jsonl` | 69787 | 0.925578382 | 0.898853283 | 1.2902064 | 0.832882346 |
-| `flat_pair_refine_w00125.jsonl` | 25031 | 0.647089329 | 0.61938547 | 0.895747152 | 0.640574016 |
+| `flat_pair_cert_w0025.jsonl` | 69787 | 0.898853283 | 0.925578382 | 1.2902064 | 0.832882346 |
+| `flat_pair_refine_w00125.jsonl` | 25031 | 0.61938547 | 0.647089329 | 0.895747152 | 0.640574016 |
 | `flat_pair_refine_w000625.jsonl` | 12302 | 0.172000006 | 0.172000006 | 0.243244742 | 0.159888122 |
 | `flat_pair_refine_w0003125.jsonl` | 9006 | 0.0761032378 | 0.0761032378 | 0.107626231 | 0.0706509998 |
 | `flat_pair_refine_w00015625.jsonl` | 8238 | 0.0406977567 | 0.0406977567 | 0.0575553195 | 0.0457130935 |
+| `flat_pair_refine_w000078125.jsonl` | 11018 | 0.0257506677 | 0.0257506677 | 0.0364169435 | 0.0324385554 |
 
 Assemble the full-domain certificate:
 
@@ -332,21 +346,22 @@ Assemble the full-domain certificate:
   flat_pair_refine_w000625.jsonl \
   flat_pair_refine_w0003125.jsonl \
   flat_pair_refine_w00015625.jsonl \
-  --out flat_pair_full_w00015625.jsonl
+  flat_pair_refine_w000078125.jsonl \
+  --out flat_pair_full_w000078125.jsonl
 ```
 
 Then audit the assembled certificate:
 
 ```sh
-./fence_validate --verify flat_pair_full_w00015625.jsonl \
+./fence_validate --verify flat_pair_full_w000078125.jsonl \
   --prec 70 --serial
 ```
 
 Recorded assembled audit:
 
 ```text
-verify: 696022 leaves  (discard 14550, certify 478332, flat_area 213,
-        nonoptimal 194689, survivor 8238)  prec=70
+verify: 738288 leaves  (discard 14550, certify 488028, flat_area 213,
+        nonoptimal 224479, survivor 11018)  prec=70
 verify: dyadic partition coverage of the full root box: PASSED
 verify: worst re-checked certified f_hi = 1.04959999626394
 verify: 0 failures -> AUDIT PASSED
@@ -355,13 +370,13 @@ verify: 0 failures -> AUDIT PASSED
 ## Current Conclusion
 
 For `theta = 1.0496`, with the current code and recorded refinement chain, the
-remaining unresolved region is contained in `R_C x R_D` above.  Consequently,
-outside `R_C x R_D`, every admissible normalized quadrilateral is either
+remaining unresolved region is contained in `R_A x R_B` above.  Consequently,
+outside `R_A x R_B`, every admissible normalized quadrilateral is either
 certified to have shortest fence value at most `1.0496` or is certified
 nonoptimal by the pair-equality necessary condition.
 
 This means there is no possible above-threshold optimizer outside
-`R_C x R_D`.  The statement is not that every point outside the product
+`R_A x R_B`.  The statement is not that every point outside the product
 rectangle is low by a fence-length bound alone; some boxes are eliminated by
 the independent nonoptimality certificate.
 

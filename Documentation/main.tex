@@ -30,7 +30,7 @@
 
 \DeclareRobustCommand{\code}[1]{\texttt{\detokenize{#1}}}
 \newcommand{\R}{\mathbb{R}}
-\newcommand{\AB}{\overline{AB}}
+\newcommand{\DC}{\overline{DC}}
 \newcommand{\Area}{\operatorname{Area}}
 
 \title{Interval Verification Documentation for \code{TrapeziumFence}}
@@ -58,25 +58,29 @@ domain.
 
 \section{Mathematical Normalization}
 
-The package studies convex quadrilaterals \(ABCD\) with \(A=(0,0)\),
-\(B=(1,0)\), \(C=(c_1,c_2)\), and \(D=(d_1,d_2)\).  The side \(AB\) is assumed
+The package studies convex quadrilaterals \(DCBA\) with \(D=(0,0)\),
+\(C=(1,0)\), \(B=(b_1,b_2)\), and \(A=(a_1,a_2)\).  The side \(DC\) is assumed
 to be a longest side and is normalized to length \(1\).  This loses no
 generality for the target functional, because fence lengths are divided by
-\(\sqrt{\Area(ABCD)}\).  A quadrilateral with a longer side can be rescaled and
+\(\sqrt{\Area(DCBA)}\).  A quadrilateral with a longer side can be rescaled and
 appears in another copy of the normalized search.
 
 The raw search box is
 \[
-  c_1\in[0,2],\qquad c_2\in[0,1],\qquad
-  d_1\in[-1,1],\qquad d_2\in[0,1].
+  b_1\in[0,2],\qquad b_2\in[0,1],\qquad
+  a_1\in[-1,1],\qquad a_2\in[0,1].
 \]
 The admissibility predicate keeps only boxes that may contain counterclockwise
 convex quadrilaterals whose non-base side lengths are at most \(1\):
 \[
-  |BC|\le 1,\qquad |CD|\le 1,\qquad |DA|\le 1.
+  |CB|\le 1,\qquad |BA|\le 1,\qquad |AD|\le 1.
 \]
 
-For a quadrilateral \(Q=ABCD\), the code computes six scale-invariant
+The C implementation and JSONL records still use the legacy coordinate slots
+\((c_1,c_2,d_1,d_2)\).  In the public notation of this document these slots
+mean \((b_1,b_2,a_1,a_2)\).
+
+For a quadrilateral \(Q=DCBA\), the code computes six scale-invariant
 fence-construction candidate values \(F_i(Q)\).  Each candidate value is an
 upper bound for the normalized shortest fence value, so
 \[
@@ -159,56 +163,56 @@ The C implementation is arranged in layers:
 A search cell is a four-dimensional rectangle
 \[
   X =
-  [c_{1}^{-},c_{1}^{+}]
-  \times [c_{2}^{-},c_{2}^{+}]
-  \times [d_{1}^{-},d_{1}^{+}]
-  \times [d_{2}^{-},d_{2}^{+}].
+  [b_{1}^{-},b_{1}^{+}]
+  \times [b_{2}^{-},b_{2}^{+}]
+  \times [a_{1}^{-},a_{1}^{+}]
+  \times [a_{2}^{-},a_{2}^{+}].
 \]
 Equivalently, it is a product of two planar rectangles:
 \[
-  X_C=[c_{1}^{-},c_{1}^{+}]\times[c_{2}^{-},c_{2}^{+}],
+  X_A=[a_{1}^{-},a_{1}^{+}]\times[a_{2}^{-},a_{2}^{+}],
   \qquad
-  X_D=[d_{1}^{-},d_{1}^{+}]\times[d_{2}^{-},d_{2}^{+}].
+  X_B=[b_{1}^{-},b_{1}^{+}]\times[b_{2}^{-},b_{2}^{+}].
 \]
 The initial cell has
 \[
-  X_C=[0,2]\times[0,1],
+  X_A=[-1,1]\times[0,1],
   \qquad
-  X_D=[-1,1]\times[0,1].
+  X_B=[0,2]\times[0,1].
 \]
 
 \begin{figure}[h]
 \centering
 \begin{tikzpicture}[scale=2.1]
   \begin{scope}
-    \draw[->] (-0.1,0) -- (2.2,0) node[right] {\(c_1\)};
-    \draw[->] (0,-0.1) -- (0,1.2) node[above] {\(c_2\)};
-    \draw[very thick] (0,0) rectangle (2,1);
-    \draw[dashed] (1,0) -- (1,1);
-    \draw[dashed] (0,0.5) -- (2,0.5);
-    \node at (1,-0.35) {\(C\)-rectangle: \([0,2]\times[0,1]\)};
-    \node[below] at (0,0) {\(0\)};
-    \node[below] at (1,0) {\(1\)};
-    \node[below] at (2,0) {\(2\)};
-    \node[left] at (0,0.5) {\(\frac12\)};
-    \node[left] at (0,1) {\(1\)};
-  \end{scope}
-  \begin{scope}[xshift=3.2cm]
-    \draw[->] (-1.2,0) -- (1.2,0) node[right] {\(d_1\)};
-    \draw[->] (-1,-0.1) -- (-1,1.2) node[above] {\(d_2\)};
+    \draw[->] (-1.2,0) -- (1.2,0) node[right] {\(a_1\)};
+    \draw[->] (-1,-0.1) -- (-1,1.2) node[above] {\(a_2\)};
     \draw[very thick] (-1,0) rectangle (1,1);
     \draw[dashed] (0,0) -- (0,1);
     \draw[dashed] (-1,0.5) -- (1,0.5);
-    \node at (0,-0.35) {\(D\)-rectangle: \([-1,1]\times[0,1]\)};
+    \node at (0,-0.35) {\(A\)-rectangle: \([-1,1]\times[0,1]\)};
     \node[below] at (-1,0) {\(-1\)};
     \node[below] at (0,0) {\(0\)};
     \node[below] at (1,0) {\(1\)};
     \node[left] at (-1,0.5) {\(\frac12\)};
     \node[left] at (-1,1) {\(1\)};
   \end{scope}
+  \begin{scope}[xshift=3.2cm]
+    \draw[->] (-0.1,0) -- (2.2,0) node[right] {\(b_1\)};
+    \draw[->] (0,-0.1) -- (0,1.2) node[above] {\(b_2\)};
+    \draw[very thick] (0,0) rectangle (2,1);
+    \draw[dashed] (1,0) -- (1,1);
+    \draw[dashed] (0,0.5) -- (2,0.5);
+    \node at (1,-0.35) {\(B\)-rectangle: \([0,2]\times[0,1]\)};
+    \node[below] at (0,0) {\(0\)};
+    \node[below] at (1,0) {\(1\)};
+    \node[below] at (2,0) {\(2\)};
+    \node[left] at (0,0.5) {\(\frac12\)};
+    \node[left] at (0,1) {\(1\)};
+  \end{scope}
 \end{tikzpicture}
-\caption{Equal-axis initial planar grids for \(C\) and \(D\).  Combining one
-rectangle from the \(C\)-grid with one rectangle from the \(D\)-grid gives a
+\caption{Equal-axis initial planar grids for \(A\) and \(B\).  Combining one
+rectangle from the \(A\)-grid with one rectangle from the \(B\)-grid gives a
 four-dimensional cell.}
 \end{figure}
 
@@ -218,16 +222,16 @@ The root spans are
 \[
   (2,1,2,1)
 \]
-for the coordinates \((c_1,c_2,d_1,d_2)\).  The search compares scaled widths
+for the public coordinates \((b_1,b_2,a_1,a_2)\).  The search compares scaled widths
 \[
-  \frac{c_1^+-c_1^-}{2},\qquad
-  c_2^+-c_2^-,\qquad
-  \frac{d_1^+-d_1^-}{2},\qquad
-  d_2^+-d_2^-.
+  \frac{b_1^+-b_1^-}{2},\qquad
+  b_2^+-b_2^-,\qquad
+  \frac{a_1^+-a_1^-}{2},\qquad
+  a_2^+-a_2^-.
 \]
 The coordinate with largest scaled width is bisected.  If the coordinate is
-\(c_1\) or \(c_2\), only the \(C\)-rectangle changes; if it is \(d_1\) or
-\(d_2\), only the \(D\)-rectangle changes.  This rule is deterministic and is
+\(b_1\) or \(b_2\), only the \(B\)-rectangle changes; if it is \(a_1\) or
+\(a_2\), only the \(A\)-rectangle changes.  This rule is deterministic and is
 used by both the search and the certificate verifier.
 
 \subsection{Leaf Classification}
@@ -319,7 +323,7 @@ configurations.
 \subsection{Opposite-Pair Equality}
 
 The two opposite-pair candidate values are exact fence-construction values for
-the pairs \((AB,CD)\) and \((BC,DA)\).  A theoretical necessary condition for
+the pairs \((DC,BA)\) and \((CB,AD)\).  A theoretical necessary condition for
 optimality is that these two fences agree at an optimizer.  The optional
 certificate \code{--pair-eq-cert} evaluates interval enclosures for the two
 exact opposite-pair candidate values.  If the finite intervals are disjoint,
@@ -336,26 +340,26 @@ loose upper majorants.
 
 Let
 \[
-  A=\Area(ABCD),\qquad h=\max\{c_2,d_2\}.
+  A_Q=\Area(DCBA),\qquad h=\max\{a_2,b_2\}.
 \]
-For the fence associated to the pair of opposite sides \((AB,CD)\), a direct
+For the fence associated to the pair of opposite sides \((DC,BA)\), a direct
 construction gives
 \[
-  L_{AB,CD}\le h.
+  L_{DC,BA}\le h.
 \]
 Indeed, the relevant separating curve can be chosen with length no larger than
-the largest height of the two top vertices over the base line \(AB\).
+the largest height of the two mobile vertices over the base line \(DC\).
 
 For an admissible counterclockwise convex quadrilateral in the normalized
 domain,
 \[
-  A=\Area(ABC)+\Area(ACD)>\frac{c_2}{2},
+  A_Q=\Area(DCB)+\Area(DBA)>\frac{b_2}{2},
   \qquad
-  A=\Area(ABD)+\Area(BCD)>\frac{d_2}{2}.
+  A_Q=\Area(DCA)+\Area(CBA)>\frac{a_2}{2}.
 \]
-Hence \(h\le 2A\), and therefore
+Hence \(h\le 2A_Q\), and therefore
 \[
-  \frac{L_{AB,CD}}{\sqrt A}\le \frac{h}{\sqrt A}\le 2\sqrt A.
+  \frac{L_{DC,BA}}{\sqrt {A_Q}}\le \frac{h}{\sqrt {A_Q}}\le 2\sqrt {A_Q}.
 \]
 Consequently, if interval arithmetic proves
 \[
@@ -375,7 +379,7 @@ For the threshold used below,
 \subsection{Angle Consequence}
 
 The vertex fence at an angle \(\alpha\) has normalized upper bound
-\(\sqrt{\alpha}\).  Thus, if the smallest angle of \(ABCD\) is less than
+\(\sqrt{\alpha}\).  Thus, if the smallest angle of \(DCBA\) is less than
 \(\theta^2\), the quadrilateral is already below threshold.  Any possible
 above-threshold optimizer must therefore have all four angles at least
 \(\theta^2\), so its largest angle is at most
@@ -413,9 +417,9 @@ centered mode this forces a conservative fallback to the natural enclosure.
 
 \subsection{Opposite-Pair Candidates}
 
-There are two exact opposite-pair candidate values: \((AB,CD)\) and \((BC,DA)\).  Let the two
+There are two exact opposite-pair candidate values: \((DC,BA)\) and \((CB,AD)\).  Let the two
 supporting line directions make acute angle \(\gamma\in[0,\pi/2]\), and let
-\(A_Q=\Area(ABCD)\).  The implementation uses two algebraically identical
+\(A_Q=\Area(DCBA)\).  The implementation uses two algebraically identical
 formulas.
 
 When \(\inf\gamma>\code{GAMMA\_SPLIT}\), the apex form is used.  Let \(O\) be
@@ -517,7 +521,7 @@ vbound & Static helper for the vertex bound \(\sqrt{\angle PVQ}\). \\
 pdist & Static helper for the distance from a point to a line, used in the parallel-safe pair formula. \\
 tri\_area & Static helper for triangle area \( \frac12 |(Q-P)\times(O-P)| \). \\
 pair\_bound & Static helper implementing the exact opposite-pair candidate value.  It selects the apex formula or the parallel-safe formula unless a test forces one; both formulas represent the same construction. \\
-compute\_items & Static builder for the six candidate-value jets from the four coordinate jets.  It also constructs the quadrilateral area \(A_Q=(c_2+c_1d_2-d_1c_2)/2\). \\
+compute\_items & Static builder for the six candidate-value jets from the four coordinate jets.  In public notation it constructs \(A_Q=(b_2+b_1a_2-a_1b_2)/2\); in the legacy implementation slots this is \((c_2+c_1d_2-d_1c_2)/2\). \\
 functionals\_eval & Public routine that encloses all six candidate values on a coordinate box, in natural or centered form. \\
 functionals\_pair\_forced & Test hook that evaluates one pair candidate at a point while forcing the apex or parallel-safe formula. \\
 functionals\_min & Encloses the minimum envelope over the six candidate values.  Non-finite item enclosures are ignored; if all six are non-finite, the result is \(+\infty\), so the search cannot certify the box. \\
@@ -534,8 +538,8 @@ Function & Purpose \\
 \endhead
 set\_box & Static helper converting double endpoints into an Arb interval. \\
 sqlen & Static helper computing squared vector length in Arb arithmetic. \\
-box\_certainly\_inadmissible & Returns true only when a whole box is proved inadmissible.  It checks CCW convexity through cross products, side lengths through squared distances, and optionally the half-domain condition \(c_1+d_1\ge1\). \\
-box\_small\_area\_certifies\_low & Returns true only when the interval upper bound for area satisfies \(A_{\rm ub}\le\theta^2/4\), so the estimate \(L_{AB,CD}/\sqrt A\le 2\sqrt A\) proves the box below threshold. \\
+box\_certainly\_inadmissible & Returns true only when a whole box is proved inadmissible.  It checks CCW convexity through cross products, side lengths through squared distances, and optionally the reflection half-domain condition \(a_1+b_1\ge1\) (stored internally as \(c_1+d_1\ge1\)). \\
+box\_small\_area\_certifies\_low & Returns true only when the interval upper bound for area satisfies \(A_{\rm ub}\le\theta^2/4\), so the estimate \(L_{DC,BA}/\sqrt {A_Q}\le 2\sqrt {A_Q}\) proves the box below threshold. \\
 \bottomrule
 \end{longtable}
 
@@ -649,7 +653,8 @@ The executable is \code{fence\_validate}.  The principal options are:
   \item[\code{--prec P}] Starting Arb precision in bits.
   \item[\code{--maxprec M}] Cap for adaptive precision.
   \item[\code{--form natural|centered}] Interval enclosure mode.
-  \item[\code{--half}] Use the optional reflection half-domain \(c_1+d_1\ge1\).
+  \item[\code{--half}] Use the optional reflection half-domain \(a_1+b_1\ge1\)
+  (stored internally as \(c_1+d_1\ge1\)).
   \item[\code{--serial}] Force single-threaded execution.
   \item[\code{--adaptive}] Retry marginal unresolved boxes at higher precision.
   \item[\code{--pair-eq-cert}] Certify boxes as \code{nonoptimal} when the two exact opposite-pair candidate intervals are disjoint.
@@ -659,7 +664,7 @@ The executable is \code{fence\_validate}.  The principal options are:
   \item[\code{--stats}] Print summary statistics.
   \item[\code{--verify FILE}] Re-check metadata, local claims, and full dyadic coverage.  The file supplies \(\theta\), \code{form}, and \code{half}; command-line values for those fields are optional consistency checks.
   \item[\code{--assemble FILE... --out OUT}] Assemble a base certificate and refinement files into one full-domain certificate.
-  \item[\code{--eval c1 c2 d1 d2}] Print the six candidate values and minimum at a point.
+  \item[\code{--eval b1 b2 a1 a2}] Print the six candidate values and minimum at a point.
   \item[\code{--refine FILE}] Seed the search from survivor boxes in a previous certificate.
 \end{description}
 
@@ -698,8 +703,8 @@ Mode & \code{make OMP=0}, \code{--serial} \\
 
 The reference trapezoid used in diagnostics is approximately
 \[
-  C^\ast=(0.6417451566,\ 0.7071006812),\qquad
-  D^\ast=(0.3582548434,\ 0.7071006812).
+  A^\ast=(0.3582548434,\ 0.7071006812),\qquad
+  B^\ast=(0.6417451566,\ 0.7071006812).
 \]
 Point evaluation gives
 \[
@@ -731,6 +736,8 @@ Refine 3 & 0.003125 & 19.360 & 66134 & 0 & 17312 & 0 & 39816 & 9006 &
 \(5.24218{\times}10^{-7}\) \\
 Refine 4 & 0.0015625 & 14.399 & 49864 & 0 & 10580 & 0 & 31046 & 8238 &
 \(2.99697{\times}10^{-8}\) \\
+Refine 5 & 0.00078125 & 14.503 & 50504 & 0 & 9696 & 0 & 29790 & 11018 &
+\(2.5052{\times}10^{-9}\) \\
 \bottomrule
 \end{longtable}
 \endgroup
@@ -761,6 +768,11 @@ The commands were:
   --form centered --serial --flat-area-cert --pair-eq-cert \
   --refine flat_pair_refine_w0003125.jsonl \
   --out flat_pair_refine_w00015625.jsonl --stats
+
+./fence_validate --theta 1.0496 --wfloor 0.00078125 --prec 70 \
+  --form centered --serial --flat-area-cert --pair-eq-cert \
+  --refine flat_pair_refine_w00015625.jsonl \
+  --out flat_pair_refine_w000078125.jsonl --stats
 \end{lstlisting}
 
 \subsection{Survivor Analysis}
@@ -769,21 +781,21 @@ The postprocessor applied to the last refinement file reports that all
 remaining survivors are certainly admissible, with zero boundary-straddling
 survivor volume.  The survivor union is contained in the product
 \[
-  R_C\times R_D,
+  R_A\times R_B,
 \]
 where
 \[
 \begin{aligned}
-R_C&=[0.626953125,\ 0.669921875]\times[0.677734375,\ 0.7353515625],\\
-R_D&=[0.330078125,\ 0.373046875]\times[0.677734375,\ 0.7353515625].
+R_A&=[0.3427734375,\ 0.369140625]\times[0.6865234375,\ 0.7270507812],\\
+R_B&=[0.630859375,\ 0.6572265625]\times[0.6865234375,\ 0.7270507812].
 \end{aligned}
 \]
 The survivor volume bound is
 \[
-  2.99697\times 10^{-8},
+  2.5052\times 10^{-9},
 \]
 and the farthest point of a survivor box from \(T^\ast\), in the coordinate box
-metric used by the analysis script, is \(0.045713093\).
+metric used by the analysis script, is \(0.032438555\).
 
 The command
 \begin{lstlisting}
@@ -791,19 +803,19 @@ python3 analyze_refinement_distances.py
 \end{lstlisting}
 computes diagonal-style Euclidean upper bounds from each refinement's survivor
 rectangles to the reference trapezoid.  For the displayed product rectangle
-\(R_C\times R_D\), the \(C\)- and \(D\)-bounds are farthest-corner distances
-from \(C^\ast\) and \(D^\ast\), and the four-dimensional product bound is their
+\(R_A\times R_B\), the \(A\)- and \(B\)-bounds are farthest-corner distances
+from \(A^\ast\) and \(B^\ast\), and the four-dimensional product bound is their
 Euclidean combination.
 
 \begin{center}
 \scriptsize
 \begin{tabular}{lrrrrr}
 \toprule
-File & Survivors & \(C\) bound & \(D\) bound & 4D product & Max leaf 4D \\
+File & Survivors & \(A\) bound & \(B\) bound & 4D product & Max leaf 4D \\
 \midrule
-\code{flat_pair_cert_w0025.jsonl} & 69787 & 0.925578382 & 0.898853283 &
+\code{flat_pair_cert_w0025.jsonl} & 69787 & 0.898853283 & 0.925578382 &
 1.2902064 & 0.832882346 \\
-\code{flat_pair_refine_w00125.jsonl} & 25031 & 0.647089329 & 0.61938547 &
+\code{flat_pair_refine_w00125.jsonl} & 25031 & 0.61938547 & 0.647089329 &
 0.895747152 & 0.640574016 \\
 \code{flat_pair_refine_w000625.jsonl} & 12302 & 0.172000006 & 0.172000006 &
 0.243244742 & 0.159888122 \\
@@ -811,6 +823,8 @@ File & Survivors & \(C\) bound & \(D\) bound & 4D product & Max leaf 4D \\
 0.107626231 & 0.0706509998 \\
 \code{flat_pair_refine_w00015625.jsonl} & 8238 & 0.0406977567 & 0.0406977567 &
 0.0575553195 & 0.0457130935 \\
+\code{flat_pair_refine_w000078125.jsonl} & 11018 & 0.0257506677 & 0.0257506677 &
+0.0364169435 & 0.0324385554 \\
 \bottomrule
 \end{tabular}
 \end{center}
@@ -818,17 +832,26 @@ File & Survivors & \(C\) bound & \(D\) bound & 4D product & Max leaf 4D \\
 \begin{figure}[h]
 \centering
 \includegraphics[width=0.86\textwidth]{figures/current_survivor_rectangles.png}
-\caption{Equal-axis PNG export of the current survivor rectangles for \(C\) and
-\(D\), together with the reference trapezoid point.}
+\caption{Equal-axis PNG export of the current survivor rectangles for \(A\) and
+\(B\), together with the reference trapezoid point.  The left panel is the left
+mobile vertex \(A\), and the right panel is the right mobile vertex \(B\).}
+\end{figure}
+
+\begin{figure}[h]
+\centering
+\includegraphics[width=0.92\textwidth]{figures/survivor_rectangles_overview.png}
+\caption{Overview of the conjectured optimal trapezium \(DCB^\ast A^\ast\).
+The survivor rectangles \(R_A\) and \(R_B\) are drawn in place and repeated as
+zoomed sub-images inside the larger geometric view.}
 \end{figure}
 
 \subsection{Interpretation}
 
 For \(\theta=1.0496\), the current refinement sequence leaves only boxes inside
-\(R_C\times R_D\).  Outside this product rectangle, every admissible normalized
+\(R_A\times R_B\).  Outside this product rectangle, every admissible normalized
 quadrilateral is either certified to have shortest fence value at most
 \(1.0496\) or certified nonoptimal by the opposite-pair equality condition.
-Thus there is no possible above-threshold optimizer outside \(R_C\times R_D\).
+Thus there is no possible above-threshold optimizer outside \(R_A\times R_B\).
 
 This is stronger than the earlier run without auxiliary certificates, but it
 must be read with the correct status semantics: \code{nonoptimal} is not a
@@ -848,27 +871,28 @@ verification:
   flat_pair_refine_w000625.jsonl \
   flat_pair_refine_w0003125.jsonl \
   flat_pair_refine_w00015625.jsonl \
-  --out flat_pair_full_w00015625.jsonl
+  flat_pair_refine_w000078125.jsonl \
+  --out flat_pair_full_w000078125.jsonl
 \end{lstlisting}
 
 The recorded assembly produced
 \[
-  696{,}022
+  738{,}288
 \]
 leaves.  The assembled full-domain certificate was then audited by
 
 \begin{lstlisting}
-./fence_validate --verify flat_pair_full_w00015625.jsonl \
+./fence_validate --verify flat_pair_full_w000078125.jsonl \
   --prec 70 --serial
 \end{lstlisting}
 
 with output
 \[
 \begin{aligned}
-&696{,}022\text{ leaves},\quad 14{,}550\text{ discarded},\quad
-478{,}332\text{ certified},\\
-&213\text{ flat-area},\quad 194{,}689\text{ nonoptimal},\quad
-8{,}238\text{ survivors}.
+&738{,}288\text{ leaves},\quad 14{,}550\text{ discarded},\quad
+488{,}028\text{ certified},\\
+&213\text{ flat-area},\quad 224{,}479\text{ nonoptimal},\quad
+11{,}018\text{ survivors}.
 \end{aligned}
 \]
 The dyadic partition coverage of the full root box passed, the worst
@@ -900,7 +924,7 @@ metadata rather than used to define the certificate claim.
   possible optimizers, not as pointwise low-fence bounds.
 
   \item Status \code{flat\_area} is an upper-bound statement.  It uses
-  \(L_{AB,CD}/\sqrt A\le 2\sqrt A\) and \(A_{\rm ub}\le\theta^2/4\) to prove
+  \(L_{DC,BA}/\sqrt {A_Q}\le 2\sqrt {A_Q}\) and \(A_{\rm ub}\le\theta^2/4\) to prove
   the box below threshold.
 
   \item Coarse boxes near degeneracies can have very wide interval enclosures.

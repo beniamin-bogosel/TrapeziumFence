@@ -9,21 +9,25 @@ by **Beniamin Bogosel**, **Dorin Bucur** and **Ilaria Fragala**.
 Interval-arithmetic checker for the normalized longest-shortest-fence problem.
 
 We normalize a convex quadrilateral by choosing a longest edge, naming it
-`AB`, scaling it to length `1`, and placing
-`A=(0,0)`, `B=(1,0)`.  Then
-`C=(c1,c2)`, `D=(d1,d2)` and the normalized domain is
+`DC`, scaling it to length `1`, and placing
+`D=(0,0)`, `C=(1,0)`.  Then
+`B=(b1,b2)`, `A=(a1,a2)` and the normalized domain is
 
 ```
-c1 in [0,2],  c2 in [0,1],  d1 in [-1,1],  d2 in [0,1],
-convex/CCW, and |BC|, |CD|, |DA| <= 1.
+b1 in [0,2],  b2 in [0,1],  a1 in [-1,1],  a2 in [0,1],
+convex/CCW in the order D,C,B,A, and |CB|, |BA|, |AD| <= 1.
 ```
 
-The objective is `shortest_fence_length / sqrt(area(ABCD))`, so this
+The objective is `shortest_fence_length / sqrt(area(DCBA))`, so this
 longest-edge normalization does not lose generality.
+
+Internally, the C source and JSONL boxes keep the original coordinate slots
+`(c1,c2,d1,d2)`.  In the public notation used here,
+`(c1,c2)` means `B=(b1,b2)` and `(d1,d2)` means `A=(a1,a2)`.
 
 ## What Is Certified
 
-For each box in `(c1,c2,d1,d2)`, the program evaluates six rigorous
+For each box in `(b1,b2,a1,a2)`, the program evaluates six rigorous
 enclosures of explicit fence-construction values:
 
 - four vertex-angle candidates;
@@ -39,7 +43,7 @@ normalized shortest fence value at most `theta`.  Such a box is written as
 Two optional certificates are also available:
 
 - `--flat-area-cert`: certifies low boxes using
-  `L_AB,CD / sqrt(area) <= 2 sqrt(area)`;
+  `L_DC,BA / sqrt(area) <= 2 sqrt(area)`;
 - `--pair-eq-cert`: certifies `nonoptimal` boxes when the two exact
   opposite-pair candidate intervals are disjoint, violating a necessary
   equality condition for an optimizer.
@@ -143,8 +147,8 @@ rectangle to the reference trapezoid `T*`.
 The conjectured isosceles trapezoid used for sanity checks is
 
 ```
-C* = (0.6417451566, 0.7071006812)
-D* = (0.3582548434, 0.7071006812)
+A* = (0.3582548434, 0.7071006812)
+B* = (0.6417451566, 0.7071006812)
 f(T*) ~= 1.049685815
 ```
 

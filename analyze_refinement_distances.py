@@ -3,16 +3,18 @@
 
 For each certificate/refinement JSONL file, this script reads the unresolved
 survivor leaves and computes simple Euclidean upper bounds on the distance to
-the reference trapezoid T*.  The displayed rectangle bound uses the coordinate
-bounding box of all survivors in that file:
+the reference trapezoid T*.  The public notation is D=(0,0), C=(1,0), with
+mobile vertices B=(b1,b2) and A=(a1,a2).  The JSONL files still store these
+coordinates in implementation order (b1,b2,a1,a2).
 
-    R_C = [c1_min,c1_max] x [c2_min,c2_max]
-    R_D = [d1_min,d1_max] x [d2_min,d2_max].
+The displayed rectangle bound uses the coordinate bounding box of all survivors
+in that file:
 
-The C and D bounds are the farthest-corner distances from C* and D* to those
-rectangles.  The 4D bound is sqrt(C_bound^2 + D_bound^2).  This is exactly the
-diagonal-style upper bound associated with the currently displayed survivor
-rectangles.
+    R_A = [a1_min,a1_max] x [a2_min,a2_max]
+    R_B = [b1_min,b1_max] x [b2_min,b2_max].
+
+The A and B bounds are the farthest-corner distances from A* and B* to those
+rectangles.  The 4D bound is sqrt(A_bound^2 + B_bound^2).
 """
 import argparse
 import json
@@ -20,8 +22,8 @@ import math
 import os
 import sys
 
-CSTAR = (0.6417451566, 0.7071006812)
-DSTAR = (0.3582548434, 0.7071006812)
+BSTAR = (0.6417451566, 0.7071006812)
+ASTAR = (0.3582548434, 0.7071006812)
 
 DEFAULT_FILES = [
     "flat_pair_cert_w0025.jsonl",
@@ -29,6 +31,7 @@ DEFAULT_FILES = [
     "flat_pair_refine_w000625.jsonl",
     "flat_pair_refine_w0003125.jsonl",
     "flat_pair_refine_w00015625.jsonl",
+    "flat_pair_refine_w000078125.jsonl",
 ]
 
 
@@ -59,9 +62,9 @@ def farthest_corner_distance(rect, point):
 
 
 def box_distance_4d(box):
-    c = farthest_corner_distance(box[:2], CSTAR)
-    d = farthest_corner_distance(box[2:], DSTAR)
-    return math.hypot(c, d)
+    b = farthest_corner_distance(box[:2], BSTAR)
+    a = farthest_corner_distance(box[2:], ASTAR)
+    return math.hypot(a, b)
 
 
 def fmt_interval(pair):
@@ -77,24 +80,24 @@ def analyze(path):
             "leaves": len(leaves),
             "survivors": 0,
             "bbox": None,
-            "c_bound": 0.0,
-            "d_bound": 0.0,
+            "a_bound": 0.0,
+            "b_bound": 0.0,
             "bound4": 0.0,
             "leaf4": 0.0,
         }
 
     b = bbox(survivors)
-    c_bound = farthest_corner_distance(b[:2], CSTAR)
-    d_bound = farthest_corner_distance(b[2:], DSTAR)
-    bound4 = math.hypot(c_bound, d_bound)
+    b_bound = farthest_corner_distance(b[:2], BSTAR)
+    a_bound = farthest_corner_distance(b[2:], ASTAR)
+    bound4 = math.hypot(a_bound, b_bound)
     leaf4 = max(box_distance_4d(box) for box in survivors)
     return {
         "path": path,
         "leaves": len(leaves),
         "survivors": len(survivors),
         "bbox": b,
-        "c_bound": c_bound,
-        "d_bound": d_bound,
+        "a_bound": a_bound,
+        "b_bound": b_bound,
         "bound4": bound4,
         "leaf4": leaf4,
     }
@@ -102,16 +105,16 @@ def analyze(path):
 
 def print_table(rows):
     print("Distance-to-T* upper bounds from survivor rectangles")
-    print(f"C* = ({CSTAR[0]:.10g}, {CSTAR[1]:.10g})")
-    print(f"D* = ({DSTAR[0]:.10g}, {DSTAR[1]:.10g})")
+    print(f"A* = ({ASTAR[0]:.10g}, {ASTAR[1]:.10g})")
+    print(f"B* = ({BSTAR[0]:.10g}, {BSTAR[1]:.10g})")
     print()
-    print("| file | survivors | C rectangle bound | D rectangle bound | 4D product bound | max leaf 4D bound |")
+    print("| file | survivors | A rectangle bound | B rectangle bound | 4D product bound | max leaf 4D bound |")
     print("| --- | ---: | ---: | ---: | ---: | ---: |")
     for row in rows:
         name = os.path.basename(row["path"])
         print(
             f"| {name} | {row['survivors']} | "
-            f"{row['c_bound']:.9g} | {row['d_bound']:.9g} | "
+            f"{row['a_bound']:.9g} | {row['b_bound']:.9g} | "
             f"{row['bound4']:.9g} | {row['leaf4']:.9g} |"
         )
     print()
@@ -120,8 +123,8 @@ def print_table(rows):
             continue
         b = row["bbox"]
         print(os.path.basename(row["path"]))
-        print(f"  R_C = {fmt_interval(b[0])} x {fmt_interval(b[1])}")
-        print(f"  R_D = {fmt_interval(b[2])} x {fmt_interval(b[3])}")
+        print(f"  R_A = {fmt_interval(b[2])} x {fmt_interval(b[3])}")
+        print(f"  R_B = {fmt_interval(b[0])} x {fmt_interval(b[1])}")
 
 
 def main():

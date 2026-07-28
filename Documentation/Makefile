@@ -4,7 +4,7 @@ PDF = main.pdf
 
 all: $(PDF)
 
-$(PDF): main.tex figures/current_survivor_rectangles.png
+$(PDF): main.tex figures/current_survivor_rectangles.png figures/survivor_rectangles_overview.png
 	pdflatex -interaction=nonstopmode main.tex
 	pdflatex -interaction=nonstopmode main.tex
 
