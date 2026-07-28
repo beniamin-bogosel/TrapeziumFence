@@ -32,6 +32,7 @@ DEFAULT_FILES = [
     "flat_pair_refine_w0003125.jsonl",
     "flat_pair_refine_w00015625.jsonl",
     "flat_pair_refine_w000078125.jsonl",
+    "flat_pair_refine_w0000390625.jsonl",
 ]
 
 

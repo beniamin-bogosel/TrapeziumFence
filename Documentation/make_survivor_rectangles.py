@@ -9,8 +9,8 @@ from matplotlib.patches import Rectangle
 # Public notation: D=(0,0), C=(1,0), B is the right mobile vertex and A is the
 # left mobile vertex.  Internally, B is stored in the old C-slots and A in the
 # old D-slots.
-B_RECT = ((0.630859375, 0.6572265625), (0.6865234375, 0.7270507812))
-A_RECT = ((0.3427734375, 0.369140625), (0.6865234375, 0.7270507812))
+B_RECT = ((0.6337890625, 0.6499023438), (0.6921386719, 0.7219238281))
+A_RECT = ((0.349609375, 0.3662109375), (0.6921386719, 0.7219238281))
 BSTAR = (0.6417451566, 0.7071006812)
 ASTAR = (0.3582548434, 0.7071006812)
 FIG_DIR = Path(__file__).resolve().parent / "figures"

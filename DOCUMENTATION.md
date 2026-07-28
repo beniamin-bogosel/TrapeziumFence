@@ -280,6 +280,11 @@ Commands:
   --form centered --serial --flat-area-cert --pair-eq-cert \
   --refine flat_pair_refine_w00015625.jsonl \
   --out flat_pair_refine_w000078125.jsonl --stats
+
+./fence_validate --theta 1.0496 --wfloor 0.000390625 --prec 70 \
+  --form centered --serial --flat-area-cert --pair-eq-cert \
+  --refine flat_pair_refine_w000078125.jsonl \
+  --out flat_pair_refine_w0000390625.jsonl --stats
 ```
 
 Observed data:
@@ -292,14 +297,15 @@ Observed data:
 | Refine 3 | 0.003125 | 19.360 | 66134 | 0 | 17312 | 0 | 39816 | 9006 | <= 5.24218e-7 |
 | Refine 4 | 0.0015625 | 14.399 | 49864 | 0 | 10580 | 0 | 31046 | 8238 | <= 2.99697e-8 |
 | Refine 5 | 0.00078125 | 14.503 | 50504 | 0 | 9696 | 0 | 29790 | 11018 | <= 2.5052e-9 |
+| Refine 6 | 0.000390625 | 22.381 | 72276 | 0 | 12739 | 0 | 41012 | 18525 | <= 2.63256e-10 |
 
 After the last recorded refinement, all remaining survivors were certainly
 admissible and the boundary-straddling survivor volume was zero.  The final
 survivor union is contained in
 
 ```text
-R_A = [0.3427734375, 0.369140625] x [0.6865234375, 0.7270507812],
-R_B = [0.630859375, 0.6572265625] x [0.6865234375, 0.7270507812].
+R_A = [0.349609375, 0.3662109375] x [0.6921386719, 0.7219238281],
+R_B = [0.6337890625, 0.6499023438] x [0.6921386719, 0.7219238281].
 ```
 
 The reference trapezoid is
@@ -336,6 +342,7 @@ individual survivor leaves rather than over the displayed product rectangle.
 | `flat_pair_refine_w0003125.jsonl` | 9006 | 0.0761032378 | 0.0761032378 | 0.107626231 | 0.0706509998 |
 | `flat_pair_refine_w00015625.jsonl` | 8238 | 0.0406977567 | 0.0406977567 | 0.0575553195 | 0.0457130935 |
 | `flat_pair_refine_w000078125.jsonl` | 11018 | 0.0257506677 | 0.0257506677 | 0.0364169435 | 0.0324385554 |
+| `flat_pair_refine_w0000390625.jsonl` | 18525 | 0.0172802155 | 0.0170411685 | 0.024269472 | 0.0237844268 |
 
 Assemble the full-domain certificate:
 
@@ -347,23 +354,24 @@ Assemble the full-domain certificate:
   flat_pair_refine_w0003125.jsonl \
   flat_pair_refine_w00015625.jsonl \
   flat_pair_refine_w000078125.jsonl \
-  --out flat_pair_full_w000078125.jsonl
+  flat_pair_refine_w0000390625.jsonl \
+  --out flat_pair_full_w0000390625.jsonl
 ```
 
 Then audit the assembled certificate:
 
 ```sh
-./fence_validate --verify flat_pair_full_w000078125.jsonl \
+./fence_validate --verify flat_pair_full_w0000390625.jsonl \
   --prec 70 --serial
 ```
 
 Recorded assembled audit:
 
 ```text
-verify: 738288 leaves  (discard 14550, certify 488028, flat_area 213,
-        nonoptimal 224479, survivor 11018)  prec=70
+verify: 799546 leaves  (discard 14550, certify 500767, flat_area 213,
+        nonoptimal 265491, survivor 18525)  prec=70
 verify: dyadic partition coverage of the full root box: PASSED
-verify: worst re-checked certified f_hi = 1.04959999626394
+verify: worst re-checked certified f_hi = 1.0495999994684
 verify: 0 failures -> AUDIT PASSED
 ```
 
