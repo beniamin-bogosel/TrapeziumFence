@@ -16,6 +16,7 @@ ASTAR = (0.3582548434, 0.7071006812)
 FIG_DIR = Path(__file__).resolve().parent / "figures"
 RECT_OUT = FIG_DIR / "current_survivor_rectangles.png"
 OVERVIEW_OUT = FIG_DIR / "survivor_rectangles_overview.png"
+THREE_PANEL_OUT = FIG_DIR / "survivor_rectangles_three_panel.png"
 
 
 def add_survivor_panel(ax, rect, star, title, xvar, yvar):
@@ -81,51 +82,76 @@ def add_zoom_panel(ax, rect, star, panel_title, point_label, xvar, yvar):
     ax.texts[-1].set_fontsize(13)
 
 
-def add_overview():
-    fig = plt.figure(figsize=(15, 9.5), dpi=100)
-    gs = fig.add_gridspec(2, 2, height_ratios=[1.45, 1.0], hspace=0.34, wspace=0.18)
-    ax = fig.add_subplot(gs[0, :])
+def add_compact_zoom_panel(ax, rect, star, panel_title, point_label, xvar, yvar):
+    add_survivor_panel(ax, rect, star, point_label, xvar, yvar)
+    ax.set_title(panel_title, fontsize=11, pad=4)
+    ax.set_xlabel(rf"${xvar}$", fontsize=10, labelpad=2)
+    ax.set_ylabel(rf"${yvar}$", fontsize=10, labelpad=2)
+    ax.tick_params(axis="both", labelsize=8.5, pad=1.5)
+    ax.texts[-1].set_position((0.5, -0.27))
+    ax.texts[-1].set_fontsize(10)
+    for text in ax.texts[:-1]:
+        text.set_fontsize(10)
+
+
+def add_trapezium_panel(ax, show_coordinate_labels, publication=False):
+    label_size = 10 if publication else 16
+    axis_label_size = 10 if publication else 18
+    tick_size = 8.5 if publication else 11
+    star_size = 64 if publication else 170
+    point_size = 18 if publication else 42
+    line_width = 1.25 if publication else 2.2
+    rect_width = 1.0 if publication else 2.0
 
     d = (0.0, 0.0)
     c = (1.0, 0.0)
     poly_x = [d[0], c[0], BSTAR[0], ASTAR[0], d[0]]
     poly_y = [d[1], c[1], BSTAR[1], ASTAR[1], d[1]]
-    ax.plot(poly_x, poly_y, color="#1f2933", linewidth=2.2)
+    ax.plot(poly_x, poly_y, color="#1f2933", linewidth=line_width)
     ax.fill(poly_x, poly_y, color="#eef6f9", alpha=0.85)
 
-    for label, point, color in (
-        (r"$D=(0,0)$", d, "#1f2933"),
-        (r"$C=(1,0)$", c, "#1f2933"),
-        (r"$A^\ast$", ASTAR, "#b3261e"),
-        (r"$B^\ast$", BSTAR, "#b3261e"),
-    ):
-        marker = "*" if "ast" in label else "o"
-        size = 170 if marker == "*" else 42
-        ax.scatter([point[0]], [point[1]], marker=marker, s=size, color=color,
-                   edgecolor="#5c0f0a" if marker == "*" else color, zorder=4)
-        offset = (-38, 9) if point[0] < 0.5 else (9, 9)
-        if point[1] == 0:
-            offset = (-42, 9) if point[0] < 0.5 else (8, 9)
+    fixed_labels = (
+        (r"$D=(0,0)$" if show_coordinate_labels else r"$D$", d),
+        (r"$C=(1,0)$" if show_coordinate_labels else r"$C$", c),
+    )
+    for label, point in fixed_labels:
+        ax.scatter([point[0]], [point[1]], marker="o", s=point_size, color="#1f2933", zorder=4)
+        offset = (0, 9) if publication else ((-24, 9) if point[0] < 0.5 else (8, 9))
         ax.annotate(label, xy=point, xytext=offset, textcoords="offset points",
-                    fontsize=16, color=color)
+                    ha="center" if publication else "left",
+                    fontsize=label_size, color="#1f2933")
+
+    for label, point in ((r"$A^\ast$", ASTAR), (r"$B^\ast$", BSTAR)):
+        ax.scatter([point[0]], [point[1]], marker="*", s=star_size, color="#b3261e",
+                   edgecolor="#5c0f0a", linewidth=0.8, zorder=4)
+        offset = (-24, 6) if point[0] < 0.5 else (7, 6)
+        ax.annotate(label, xy=point, xytext=offset, textcoords="offset points",
+                    fontsize=label_size, color="#b3261e")
 
     for rect, edge, label in ((A_RECT, "#0b5f79", r"$R_A$"),
                               (B_RECT, "#0b5f79", r"$R_B$")):
         (xlo, xhi), (ylo, yhi) = rect
         ax.add_patch(Rectangle((xlo, ylo), xhi - xlo, yhi - ylo,
                                facecolor="#8ecae6", edgecolor=edge,
-                               linewidth=2.0, alpha=0.45, zorder=3))
+                               linewidth=rect_width, alpha=0.45, zorder=3))
         ax.annotate(label, xy=((xlo + xhi) / 2, yhi),
-                    xytext=(0, 8), textcoords="offset points",
-                    ha="center", fontsize=16, color=edge)
+                    xytext=(0, 6 if publication else 8), textcoords="offset points",
+                    ha="center", fontsize=label_size, color=edge)
 
     ax.set_aspect("equal", adjustable="box")
     ax.set_xlim(-0.08, 1.08)
-    ax.set_ylim(-0.07, 0.84)
-    ax.set_xlabel(r"$x$", fontsize=18)
-    ax.set_ylabel(r"$y$", fontsize=18)
-    ax.tick_params(axis="both", labelsize=12)
-    ax.grid(True, color="#d8dee3", linewidth=0.8)
+    ax.set_ylim(-0.07, 0.88 if publication else 0.84)
+    ax.set_xlabel(r"$x$", fontsize=axis_label_size, labelpad=2)
+    ax.set_ylabel(r"$y$", fontsize=axis_label_size, labelpad=2)
+    ax.tick_params(axis="both", labelsize=tick_size, pad=1.5)
+    ax.grid(True, color="#d8dee3", linewidth=0.45 if publication else 0.8)
+
+
+def add_overview():
+    fig = plt.figure(figsize=(15, 9.5), dpi=100)
+    gs = fig.add_gridspec(2, 2, height_ratios=[1.45, 1.0], hspace=0.34, wspace=0.18)
+    ax = fig.add_subplot(gs[0, :])
+    add_trapezium_panel(ax, show_coordinate_labels=True)
     ax.set_title(r"Survivor rectangles inside the conjectured trapezium neighborhood",
                  fontsize=22, pad=12)
 
@@ -136,6 +162,26 @@ def add_overview():
 
     fig.subplots_adjust(left=0.06, right=0.985, top=0.94, bottom=0.09)
     fig.savefig(OVERVIEW_OUT, dpi=100)
+    plt.close(fig)
+
+
+def add_three_panel():
+    fig = plt.figure(figsize=(7.2, 2.92), dpi=300)
+    gs = fig.add_gridspec(1, 3, width_ratios=[1.08, 1.32, 1.08], wspace=0.12)
+    left = fig.add_subplot(gs[0, 0])
+    middle = fig.add_subplot(gs[0, 1])
+    right = fig.add_subplot(gs[0, 2])
+
+    add_compact_zoom_panel(left, A_RECT, ASTAR, r"$R_A$ near $A^\ast$",
+                           r"$A^\ast$", r"a_1", r"a_2")
+    add_trapezium_panel(middle, show_coordinate_labels=False, publication=True)
+    add_compact_zoom_panel(right, B_RECT, BSTAR, r"$R_B$ near $B^\ast$",
+                           r"$B^\ast$", r"b_1", r"b_2")
+
+    fig.suptitle(r"Region near conjectured trapezium containing possible competitors",
+                 fontsize=12.5, y=0.96)
+    fig.subplots_adjust(left=0.045, right=0.992, top=0.80, bottom=0.29)
+    fig.savefig(THREE_PANEL_OUT, dpi=300)
     plt.close(fig)
 
 
@@ -157,6 +203,7 @@ def main():
     fig.savefig(RECT_OUT, dpi=100)
     plt.close(fig)
     add_overview()
+    add_three_panel()
 
 
 if __name__ == "__main__":
