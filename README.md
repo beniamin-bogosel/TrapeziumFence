@@ -38,7 +38,9 @@ Each candidate value is an upper bound for the true shortest fence, so
 `f = min(six candidate values)` is also an upper bound.  If interval arithmetic proves
 `f_hi <= theta` on a box, then every admissible quadrilateral in that box has
 normalized shortest fence value at most `theta`.  Such a box is written as
-`"certified"`.
+`"certified"`. 
+
+Notation misalignment: The paper uses the notation `sigma` instead of `theta` for the threshold.
 
 Two optional certificates are also available:
 

@@ -128,8 +128,8 @@ def add_trapezium_panel(ax, show_coordinate_labels, publication=False):
         ax.annotate(label, xy=point, xytext=offset, textcoords="offset points",
                     fontsize=label_size, color="#b3261e")
 
-    for rect, edge, label in ((A_RECT, "#0b5f79", r"$R_A$"),
-                              (B_RECT, "#0b5f79", r"$R_B$")):
+    for rect, edge, label in ((A_RECT, "#0b5f79", r"$\mathcal{R}_A$"),
+                              (B_RECT, "#0b5f79", r"$\mathcal{R}_B$")):
         (xlo, xhi), (ylo, yhi) = rect
         ax.add_patch(Rectangle((xlo, ylo), xhi - xlo, yhi - ylo,
                                facecolor="#8ecae6", edgecolor=edge,
@@ -157,8 +157,8 @@ def add_overview():
 
     left = fig.add_subplot(gs[1, 0])
     right = fig.add_subplot(gs[1, 1])
-    add_zoom_panel(left, A_RECT, ASTAR, r"$R_A$ near $A^\ast$", r"$A^\ast$", r"a_1", r"a_2")
-    add_zoom_panel(right, B_RECT, BSTAR, r"$R_B$ near $B^\ast$", r"$B^\ast$", r"b_1", r"b_2")
+    add_zoom_panel(left, A_RECT, ASTAR, r"$\mathcal{R}_A$ near $A^\ast$", r"$A^\ast$", r"a_1", r"a_2")
+    add_zoom_panel(right, B_RECT, BSTAR, r"$\mathcal{R}_B$ near $B^\ast$", r"$B^\ast$", r"b_1", r"b_2")
 
     fig.subplots_adjust(left=0.06, right=0.985, top=0.94, bottom=0.09)
     fig.savefig(OVERVIEW_OUT, dpi=100)
@@ -172,10 +172,10 @@ def add_three_panel():
     middle = fig.add_subplot(gs[0, 1])
     right = fig.add_subplot(gs[0, 2])
 
-    add_compact_zoom_panel(left, A_RECT, ASTAR, r"$R_A$ near $A^\ast$",
+    add_compact_zoom_panel(left, A_RECT, ASTAR, r"$\mathcal{R}_A$ near $A^\ast$",
                            r"$A^\ast$", r"a_1", r"a_2")
     add_trapezium_panel(middle, show_coordinate_labels=False, publication=True)
-    add_compact_zoom_panel(right, B_RECT, BSTAR, r"$R_B$ near $B^\ast$",
+    add_compact_zoom_panel(right, B_RECT, BSTAR, r"$\mathcal{R}_B$ near $B^\ast$",
                            r"$B^\ast$", r"b_1", r"b_2")
 
     fig.suptitle(r"Region near conjectured trapezium containing possible competitors",
