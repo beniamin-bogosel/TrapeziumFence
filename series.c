@@ -71,40 +71,69 @@ static void ghi_ball(arb_t gh, const arb_t gamma) {
     arf_clear(u);
 }
 
-/* gn = gamma clamped to [0, pi/2].  Since gamma = atan2(nonneg, nonneg) the true
- * value always lies in [0, pi/2], so intersecting the enclosure with this range
- * is sound; it also keeps hi < pi (so g(hi)=hi/sin(hi) stays positive and the
- * series tail bound, valid for |gamma| <= pi/2, applies).  A wide box can make
- * arb_atan2 return an enclosure up to ~pi near the origin; this clamp tames it. */
-static void clamp_nonneg(arb_t gn, const arb_t gamma, slong prec) {
-    arf_t L, U, PH;
-    arf_init(L); arf_init(U); arf_init(PH);
+/* Extract the nonnegative part of gamma and prove that its upper endpoint is
+ * strictly below pi.  The caller supplies the geometric invariant gamma >= 0,
+ * so replacing a negative enclosure tail by zero is a sound intersection.
+ * We deliberately do not clamp the upper endpoint to pi: if the input is not
+ * proved to stay below a rigorous lower bound for pi, evaluation must fail
+ * closed because sin(gamma) can vanish or change sign. */
+static int nonnegative_below_pi(arf_t L, arf_t U, const arb_t gamma, slong prec) {
+    arf_t PL;
+    arf_init(PL);
     arb_get_interval_arf(L, U, gamma, prec);
-    /* upper bound for pi/2 */
-    {
-        arb_t pit; arb_init(pit);
-        arb_const_pi(pit, prec + 8);
-        arb_mul_2exp_si(pit, pit, -1);
-        arb_get_ubound_arf(PH, pit, prec + 8);
-        arb_clear(pit);
+    if (!arf_is_finite(L) || !arf_is_finite(U) || arf_sgn(U) < 0) {
+        arf_clear(PL);
+        return 0;
     }
     if (arf_sgn(L) < 0) arf_zero(L);
-    if (arf_cmp(U, PH) > 0) arf_set(U, PH);
-    if (arf_cmp(L, U) > 0) arf_set(L, U);   /* degenerate guard */
-    arb_set_interval_arf(gn, L, U, prec);
+    {
+        arb_t pit; arb_init(pit);
+        arb_const_pi(pit, prec + 32);
+        arb_get_lbound_arf(PL, pit, prec + 32);
+        arb_clear(pit);
+    }
+    int ok = arf_cmp(L, U) <= 0 && arf_cmp(U, PL) < 0;
+    arf_clear(PL);
+    return ok;
+}
+
+/* Intersect with gamma >= 0 and require the Taylor domain gamma <= pi/2.
+ * The comparison uses a rigorous lower bound for pi/2, never an inward clamp. */
+static int nonnegative_half_pi(arb_t gn, const arb_t gamma, slong prec) {
+    arf_t L, U, PH;
+    arf_init(L); arf_init(U); arf_init(PH);
+    int ok = nonnegative_below_pi(L, U, gamma, prec);
+    if (ok) {
+        arb_t pit; arb_init(pit);
+        arb_const_pi(pit, prec + 32);
+        arb_mul_2exp_si(pit, pit, -1);
+        arb_get_lbound_arf(PH, pit, prec + 32);
+        arb_clear(pit);
+        ok = arf_cmp(U, PH) <= 0;
+    }
+    if (ok)
+        arb_set_interval_arf(gn, L, U, prec);
+    else
+        arb_indeterminate(gn);
     arf_clear(L); arf_clear(U); arf_clear(PH);
+    return ok;
 }
 
 /* Pure Taylor-series enclosure of g(gamma) with rigorous tail bound.
- * Valid for any gamma with |gamma| <= pi/2; used for the value near 0 and, as a
- * standalone routine, for the series-vs-direct cross-check test. */
+ * Valid for a nonnegative gamma enclosure proved to lie in [0,pi/2]; used for
+ * the value near 0 and for the series-vs-direct cross-check test. */
 void gamma_over_sin_series(arb_t res, const arb_t gamma, slong prec) {
     ensure_coeffs();
     arb_t gn, g2, pw, sum, gh, gh2, den, t;
     arb_init(gn); arb_init(g2); arb_init(pw); arb_init(sum);
     arb_init(gh); arb_init(gh2); arb_init(den); arb_init(t);
 
-    clamp_nonneg(gn, gamma, prec);
+    if (!nonnegative_half_pi(gn, gamma, prec)) {
+        arb_indeterminate(res);
+        arb_clear(gn); arb_clear(g2); arb_clear(pw); arb_clear(sum);
+        arb_clear(gh); arb_clear(gh2); arb_clear(den); arb_clear(t);
+        return;
+    }
     /* tight nonnegative square: [lo^2, hi^2] */
     {
         arf_t L, U;
@@ -144,18 +173,16 @@ void gamma_over_sin_series(arb_t res, const arb_t gamma, slong prec) {
 }
 
 void gamma_over_sin_value(arb_t res, const arb_t gamma, slong prec) {
-    ensure_coeffs();
-    /* g is even and strictly increasing in |gamma| on (-pi,pi).  Over a ball
-     * [lo,hi] with true gamma>=0 the exact range is [g(lo), g(hi)].  Evaluate
-     * the two endpoints (g(0)=1) and assemble [lbound(g(lo)), ubound(g(hi))].
-     * This monotone enclosure is exact and sound for thin and wide balls alike
-     * and never forms 0/0. */
-    arb_t gn;
-    arb_init(gn);
-    clamp_nonneg(gn, gamma, prec);
+    /* g is strictly increasing on [0,pi).  Over a ball [lo,hi] known to
+     * contain a nonnegative geometric angle, its range is [g(lo),g(hi)].
+     * Endpoint evaluation avoids 0/0 at the origin. */
     arf_t lo, hi, Lout, Uout;
     arf_init(lo); arf_init(hi); arf_init(Lout); arf_init(Uout);
-    arb_get_interval_arf(lo, hi, gn, prec);
+    if (!nonnegative_below_pi(lo, hi, gamma, prec)) {
+        arb_indeterminate(res);
+        arf_clear(lo); arf_clear(hi); arf_clear(Lout); arf_clear(Uout);
+        return;
+    }
 
     /* lower endpoint g(lo) */
     if (arf_is_zero(lo)) {
@@ -165,8 +192,15 @@ void gamma_over_sin_value(arb_t res, const arb_t gamma, slong prec) {
         arb_init(a); arb_init(s);
         arb_set_arf(a, lo);
         arb_sin(s, a, prec);
-        arb_div(a, a, s, prec);
-        arb_get_lbound_arf(Lout, a, prec);
+        if (arb_is_positive(s)) {
+            arb_div(a, a, s, prec);
+            arb_get_lbound_arf(Lout, a, prec);
+        } else {
+            arb_indeterminate(res);
+            arb_clear(a); arb_clear(s);
+            arf_clear(lo); arf_clear(hi); arf_clear(Lout); arf_clear(Uout);
+            return;
+        }
         arb_clear(a); arb_clear(s);
     }
     /* upper endpoint g(hi) */
@@ -177,33 +211,60 @@ void gamma_over_sin_value(arb_t res, const arb_t gamma, slong prec) {
         arb_init(a); arb_init(s);
         arb_set_arf(a, hi);
         arb_sin(s, a, prec);
-        arb_div(a, a, s, prec);
-        arb_get_ubound_arf(Uout, a, prec);
+        if (arb_is_positive(s)) {
+            arb_div(a, a, s, prec);
+            arb_get_ubound_arf(Uout, a, prec);
+        } else {
+            arb_indeterminate(res);
+            arb_clear(a); arb_clear(s);
+            arf_clear(lo); arf_clear(hi); arf_clear(Lout); arf_clear(Uout);
+            return;
+        }
         arb_clear(a); arb_clear(s);
     }
     arb_set_interval_arf(res, Lout, Uout, prec);
     arf_clear(lo); arf_clear(hi); arf_clear(Lout); arf_clear(Uout);
-    arb_clear(gn);
 }
 
 void gamma_over_sin_deriv(arb_t res, const arb_t gamma, slong prec) {
     ensure_coeffs();
-    if (arb_is_positive(gamma)) {
+    arf_t glo, ghi;
+    arf_init(glo); arf_init(ghi);
+    if (!nonnegative_below_pi(glo, ghi, gamma, prec)) {
+        arb_indeterminate(res);
+        arf_clear(glo); arf_clear(ghi);
+        return;
+    }
+    if (arf_sgn(glo) > 0) {
         /* g'(g) = (sin g - g cos g)/sin^2 g */
         arb_t s, c, num, den;
         arb_init(s); arb_init(c); arb_init(num); arb_init(den);
         arb_sin_cos(s, c, gamma, prec);
-        arb_mul(num, gamma, c, prec);
-        arb_sub(num, s, num, prec);         /* sin g - g cos g */
-        arb_mul(den, s, s, prec);           /* sin^2 g */
-        arb_div(res, num, den, prec);
+        if (arb_is_positive(s)) {
+            arb_mul(num, gamma, c, prec);
+            arb_sub(num, s, num, prec);     /* sin g - g cos g */
+            arb_mul(den, s, s, prec);       /* sin^2 g */
+            arb_div(res, num, den, prec);
+        } else {
+            arb_indeterminate(res);
+        }
         arb_clear(s); arb_clear(c); arb_clear(num); arb_clear(den);
+        arf_clear(glo); arf_clear(ghi);
         return;
     }
-    /* series: g'(g) = sum_{n>=1} a_n (2n) g^{2n-1}, all terms >= 0 on [0,ghi]. */
+    /* If the interval includes zero, use the stable positive-term series only
+     * in its proved domain [0,pi/2].  A wider interval fails closed; the
+     * centered enclosure can then fall back to its natural enclosure. */
     arb_t gn, g2, pw, sum, gh;
     arb_init(gn); arb_init(g2); arb_init(pw); arb_init(sum); arb_init(gh);
-    clamp_nonneg(gn, gamma, prec);
+    if (!nonnegative_half_pi(gn, gamma, prec)) {
+        arb_indeterminate(res);
+        arb_clear(gn); arb_clear(g2); arb_clear(pw); arb_clear(sum); arb_clear(gh);
+        arf_clear(glo); arf_clear(ghi);
+        return;
+    }
+    arf_clear(glo); arf_clear(ghi);
+    /* series: g'(g) = sum_{n>=1} a_n (2n) g^{2n-1}, all terms >= 0 on [0,ghi]. */
     /* tight nonnegative square [lo^2, hi^2] */
     {
         arf_t L, U;
@@ -229,13 +290,15 @@ void gamma_over_sin_deriv(arb_t res, const arb_t gamma, slong prec) {
         arb_mul(pw, pw, g2, prec);          /* -> gamma^{2n+1} */
         arb_clear(t);
     }
-    /* tail: term_{NC+1}/(1 - ghi^2/3), positive. */
+    /* The ratio of successive derivative terms is at most ghi^2/3.
+     * Bounding the omitted tail by the last included term D_NC divided by
+     * 1-ghi^2/3 is deliberately loose (it drops one ratio factor) but sound. */
     ghi_ball(gh, gn);
     {
         arb_t gh2, den, t, tail;
         arb_init(gh2); arb_init(den); arb_init(t); arb_init(tail);
         arb_mul(gh2, gh, gh, prec);
-        /* term_{NC+1} = a_{NC} * 2*NC * ghi^{2NC-1}  (use NC as index bound) */
+        /* D_NC = a_NC * 2*NC * ghi^{2NC-1}. */
         arb_one(t);
         for (int n = 1; n <= 2 * NC - 1; n++) arb_mul(t, t, gh, prec);  /* ghi^{2NC-1} */
         arb_mul_si(t, t, 2 * NC, prec);

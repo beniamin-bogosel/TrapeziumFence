@@ -16,10 +16,35 @@
 #include "cert.h"
 #include "series.h"
 #include "threshold.h"
+#include <ctype.h>
+#include <errno.h>
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+
+static int parse_finite_double(const char *s, double *out) {
+    char *end = NULL;
+    errno = 0;
+    double v = strtod(s, &end);
+    if (end == s || errno == ERANGE || !isfinite(v)) return 1;
+    while (isspace((unsigned char)*end)) end++;
+    if (*end != '\0') return 1;
+    *out = v;
+    return 0;
+}
+
+static int parse_long_arg(const char *s, long *out) {
+    char *end = NULL;
+    errno = 0;
+    long v = strtol(s, &end, 10);
+    if (end == s || errno == ERANGE) return 1;
+    while (isspace((unsigned char)*end)) end++;
+    if (*end != '\0') return 1;
+    *out = v;
+    return 0;
+}
 
 static void usage(const char *prog) {
     fprintf(stderr,
@@ -32,7 +57,7 @@ static void usage(const char *prog) {
 "  --half           quotient the x->1-x, C<->D reflection symmetry\n"
 "  --serial         force single-threaded\n"
 "  --adaptive       retry marginal undecided boxes at higher precision\n"
-"  --pair-eq-cert   certify nonoptimal boxes when opposite-pair intervals are disjoint\n"
+"  --pair-eq-cert   exclude boxes incompatible with opposite-pair equality\n"
 "  --flat-area-cert certify low boxes with area upper bound <= theta^2/4\n"
 "  --max-leaves N   debugging cap; truncated output will not verify fully\n"
 "  --out FILE       write JSONL certificate stream\n"
@@ -81,21 +106,48 @@ int main(int argc, char **argv) {
     for (int i = 1; i < argc; i++) {
         if (!strcmp(argv[i], "--theta") && i + 1 < argc) {
             const char *s = argv[++i];
+            double theta_approx = 0.0;
+            int bad = strlen(s) >= sizeof p.theta_str ||
+                      parse_finite_double(s, &theta_approx) ||
+                      theta_approx <= 0.0;
             fmpq_t q;
             fmpq_init(q);
-            int bad = threshold_parse_fmpq(q, s);
+            if (!bad) bad = threshold_parse_fmpq(q, s);
+            if (!bad && fmpq_sgn(q) <= 0) bad = 1;
             fmpq_clear(q);
-            if (bad || strlen(s) >= sizeof p.theta_str) {
+            if (bad) {
                 fprintf(stderr, "invalid --theta literal %s\n", s);
                 return 2;
             }
             snprintf(p.theta_str, sizeof p.theta_str, "%s", s);
-            p.theta = threshold_to_double(p.theta_str);
+            p.theta = theta_approx;
             theta_set = 1;
         }
-        else if (!strcmp(argv[i], "--wfloor") && i + 1 < argc) p.wfloor = atof(argv[++i]);
-        else if (!strcmp(argv[i], "--prec") && i + 1 < argc) p.prec = atol(argv[++i]);
-        else if (!strcmp(argv[i], "--maxprec") && i + 1 < argc) p.maxprec = atol(argv[++i]);
+        else if (!strcmp(argv[i], "--wfloor") && i + 1 < argc) {
+            const char *s = argv[++i];
+            if (parse_finite_double(s, &p.wfloor) || p.wfloor <= 0.0) {
+                fprintf(stderr, "invalid --wfloor value %s\n", s);
+                return 2;
+            }
+        }
+        else if (!strcmp(argv[i], "--prec") && i + 1 < argc) {
+            const char *s = argv[++i];
+            long v;
+            if (parse_long_arg(s, &v) || v <= 0) {
+                fprintf(stderr, "invalid --prec value %s\n", s);
+                return 2;
+            }
+            p.prec = (slong)v;
+        }
+        else if (!strcmp(argv[i], "--maxprec") && i + 1 < argc) {
+            const char *s = argv[++i];
+            long v;
+            if (parse_long_arg(s, &v) || v <= 0) {
+                fprintf(stderr, "invalid --maxprec value %s\n", s);
+                return 2;
+            }
+            p.maxprec = (slong)v;
+        }
         else if (!strcmp(argv[i], "--form") && i + 1 < argc) {
             const char *f = argv[++i];
             if (!strcmp(f, "natural")) p.form = FORM_NATURAL;
@@ -111,7 +163,15 @@ int main(int argc, char **argv) {
         else if (!strcmp(argv[i], "--adaptive")) p.adaptive_prec = 1;
         else if (!strcmp(argv[i], "--pair-eq-cert")) p.pair_eq_cert = 1;
         else if (!strcmp(argv[i], "--flat-area-cert")) p.flat_area_cert = 1;
-        else if (!strcmp(argv[i], "--max-leaves") && i + 1 < argc) p.max_leaves = atol(argv[++i]);
+        else if (!strcmp(argv[i], "--max-leaves") && i + 1 < argc) {
+            const char *s = argv[++i];
+            long v;
+            if (parse_long_arg(s, &v) || v < 0) {
+                fprintf(stderr, "invalid --max-leaves value %s\n", s);
+                return 2;
+            }
+            p.max_leaves = v;
+        }
         else if (!strcmp(argv[i], "--out") && i + 1 < argc) out_path = argv[++i];
         else if (!strcmp(argv[i], "--stats")) do_stats = 1;
         else if (!strcmp(argv[i], "--verify") && i + 1 < argc) verify_path = argv[++i];
@@ -128,10 +188,22 @@ int main(int argc, char **argv) {
         else if (!strcmp(argv[i], "--refine") && i + 1 < argc) refine_path = argv[++i];
         else if (!strcmp(argv[i], "--eval") && i + 4 < argc) {
             do_eval = 1;
-            for (int k = 0; k < 4; k++) evalpt[k] = atof(argv[++i]);
+            for (int k = 0; k < 4; k++) {
+                const char *s = argv[++i];
+                if (parse_finite_double(s, &evalpt[k])) {
+                    fprintf(stderr, "invalid --eval coordinate %s\n", s);
+                    return 2;
+                }
+            }
         }
         else if (!strcmp(argv[i], "-h") || !strcmp(argv[i], "--help")) { usage(argv[0]); return 0; }
         else { fprintf(stderr, "unknown argument: %s\n", argv[i]); usage(argv[0]); return 2; }
+    }
+
+    if (p.adaptive_prec && p.maxprec < p.prec) {
+        fprintf(stderr, "invalid precision controls: --maxprec must be >= --prec\n");
+        free(assemble_paths);
+        return 2;
     }
 
     if (n_assemble > 0) {
@@ -224,13 +296,14 @@ int main(int argc, char **argv) {
         printf("  discarded   : %ld\n", st.n_discard);
         printf("  certified   : %ld\n", st.n_certified);
         printf("  flat_area   : %ld\n", st.n_flat_area);
-        printf("  nonoptimal  : %ld\n", st.n_nonoptimal);
+        printf("  pair_incompatible: %ld\n", st.n_pair_incompatible);
         printf("  survivors   : %ld\n", st.n_survivor);
         if (st.have_survivor) {
             printf("survivor bbox : c1[%.6g,%.6g] c2[%.6g,%.6g] d1[%.6g,%.6g] d2[%.6g,%.6g]\n",
                    st.surv_lo[0], st.surv_hi[0], st.surv_lo[1], st.surv_hi[1],
                    st.surv_lo[2], st.surv_hi[2], st.surv_lo[3], st.surv_hi[3]);
-            printf("survivor vol  : <= %.6g (physical, sum of box volumes)\n", st.surv_vol);
+            printf("survivor vol  : ~ %.6g (diagnostic double sum of box volumes)\n",
+                   st.surv_vol);
             if (st.surv_vol > 0)
                 printf("survivor centroid (vol-weighted): c1=%.4f c2=%.4f d1=%.4f d2=%.4f\n",
                        st.surv_centroid[0]/st.surv_vol, st.surv_centroid[1]/st.surv_vol,
@@ -239,9 +312,8 @@ int main(int argc, char **argv) {
             printf("survivor bbox : (none)\n");
         }
         printf("max prec used : %ld bits\n", (long)st.max_prec_used);
-        printf("max certified f_hi (self-audit, must be <= theta): %.15g  -> %s\n",
-               st.max_cert_fhi,
-               (st.n_certified == 0 || st.max_cert_fhi <= p.theta) ? "OK" : "VIOLATION");
+        printf("max certified f_hi (rounded-up double diagnostic): %.15g\n",
+               st.max_cert_fhi);
         printf("wall time     : %.3f s\n", wall);
         if (p.half)
             printf("note: --half active; full survivor set is the union of this result "

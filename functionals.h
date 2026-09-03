@@ -7,7 +7,8 @@
  * an upper bound for the true shortest fence length / sqrt(area), so their
  * minimum certifies low boxes.  Items 4 and 5 have a stronger contract: they
  * enclose the exact closed-form values of the two opposite-pair constructions,
- * not arbitrary majorants.  The nonoptimality certificate relies on this.
+ * not arbitrary majorants.  The pair-equality incompatibility certificate
+ * relies on this.
  *
  *   items 0..3 : vertex fence candidates sqrt(angle) at A, B, C, D;
  *   items 4,5  : exact opposite-pair fence candidates for (AB,CD), (BC,DA).
@@ -17,12 +18,21 @@
  *   FORM_NATURAL  : direct arb extension (overestimation O(w));
  *   FORM_CENTERED : mean-value form  item(mid) + sum_k J_k(B) (B_k - mid_k),
  *                   with the Jacobian rows J_k obtained by forward-mode AD
- *                   (the jet type in geom.h).  Overestimation O(w^2).
- *   The centered result is intersected with the natural one (both sound).
+ *                   (the jet type in geom.h).  On smooth boxes away from
+ *                   singularities its overestimation is O(w^2).  No quadratic
+ *                   rate is claimed otherwise; a nonfinite centered form falls
+ *                   back to the natural enclosure.
+ *   The centered and natural results are combined conservatively: intersection
+ *   when they overlap, the finite one if only one is finite, and otherwise
+ *   their hull.
  *
- * The pair candidates switch between two mathematically identical formulas:
- *   Form1 (apex O intersection)     when inf(gamma) >  GAMMA_SPLIT;
- *   Form2 (parallel-safe, symmetric) when inf(gamma) <= GAMMA_SPLIT.
+ * For CCW-oriented opposite sides d1,d2, gamma is the aperture of the sector
+ * containing the quadrilateral:
+ *   gamma = atan2(|cross(d1,d2)|, -dot(d1,d2)) in [0,pi].
+ * It can be obtuse.  The pair candidates switch between two mathematically
+ * identical formulas according to the acute separation of the supporting lines:
+ *   Form1 (apex O intersection)      away from parallel;
+ *   Form2 (parallel-safe, symmetric) near parallel.
  * See functionals.c for the derivation; the choice affects only numerical
  * conditioning, never soundness.
  */
@@ -33,29 +43,30 @@
 
 typedef enum { FORM_NATURAL = 0, FORM_CENTERED = 1 } enclosure_form;
 
-#define GAMMA_SPLIT 0.08   /* inf(gamma) threshold selecting Form1 vs Form2 */
+#define GAMMA_SPLIT 0.08   /* acute line-separation threshold selecting Form1/Form2 */
 
 /* Enclose all six candidate values over the box [lo,hi]^4 into encl[0..5]. */
 void functionals_eval(arb_t encl[6], const double lo[4], const double hi[4],
                       enclosure_form form, slong prec);
 
-/* Necessary optimality certificate: at a true optimum the two exact
- * opposite-pair fence candidates must be equal.  Returns 1 iff the interval
+/* Pair-equality incompatibility certificate.  Returns 1 iff the interval
  * enclosures for items 4=(AB,CD) and 5=(BC,DA) are finite and disjoint over
- * the whole box.
+ * the whole box, proving that it contains no quadrilateral satisfying the
+ * imposed equality of these two exact pair-construction values.
  *
  * Soundness depends on items 4 and 5 enclosing the exact pair-construction
  * values.  Disjointness of two unrelated upper majorants would not certify
- * nonoptimality.
- * Such a box contains no optimal quadrilateral, though it need not be
- * certified below a numerical threshold theta. */
+ * incompatibility.  The equality is not a universal optimizer condition: in
+ * the proof using this code it is supplied analytically in the active
+ * P={P1,P2} cases. */
 int functionals_opposite_pairs_disjoint(const double lo[4], const double hi[4],
                                         enclosure_form form, slong prec);
 
-/* Enclose f = min of the six candidate values over the box.  Writes the min-enclosure to
- * fenc and returns the index (0..5) of the item delivering the smallest upper
- * endpoint (the "active" item that certifies the box when fenc's ubound <= theta).
- */
+/* Compute the minimum of the finite candidate enclosures and return the index
+ * (0..5) delivering its smallest upper endpoint.  That endpoint is always a
+ * rigorous one-sided upper bound for the true six-item minimum.  The whole
+ * fenc interval encloses the minimum only when all six items are finite; its
+ * lower endpoint is otherwise diagnostic.  If no item is finite, fenc is +inf. */
 int functionals_min(arb_t fenc, const double lo[4], const double hi[4],
                     enclosure_form form, slong prec);
 

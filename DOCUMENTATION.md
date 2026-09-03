@@ -12,13 +12,16 @@ threshold experiment.
 - `series.h`, `series.c`: rigorous enclosures for `gamma/sin(gamma)` and its
   derivative in the parallel-safe opposite-pair bound.
 - `functionals.h`, `functionals.c`: the six explicit fence-construction
-  candidates.  Each candidate gives an upper bound for the true shortest fence;
-  items 4 and 5 are exact opposite-pair construction values, which is essential
-  for the pair-equality certificate.  In centered mode, natural and mean-value
+  candidates.  Proposition 6 identifies their minimum with the normalized
+  shortest fence; in particular, each candidate gives an upper bound.
+  Items 4 and 5 are exact opposite-pair construction values.  Their angles are
+  the geometric sectors containing the quadrilateral, and a parallel-safe
+  expression is used near parallelism.  Exactness is essential for the
+  conditional pair-equality test.  In centered mode, natural and mean-value
   enclosures are intersected when they overlap; their hull is used if finite
   enclosures ever disagree.  The module also provides
-  `functionals_opposite_pairs_disjoint`, the optional nonoptimality test based
-  on the two exact opposite-pair fences.
+  `functionals_opposite_pairs_disjoint`, the optional pair-compatibility test
+  based on the two exact opposite-pair fences.
 - `admissible.h`, `admissible.c`: conservative discard tests for boxes that
   certainly contain no normalized admissible quadrilateral, plus
   `box_small_area_certifies_low`, the flat/small-area low-fence certificate.
@@ -29,30 +32,41 @@ threshold experiment.
 
 - `search.h`, `search.c`: dyadic subdivision.  A leaf is discarded, certified
   low by the six-function minimum, certified low by the flat-area estimate,
-  certified nonoptimal by pair-fence disagreement, or retained as an unresolved
-  survivor once it reaches `wfloor`.
+  marked pair-incompatible by pair-fence disagreement, or retained as an
+  unresolved survivor once it reaches `wfloor`.  The optional OpenMP driver
+  uses atomic termination state and the actual runtime team size, including
+  when the runtime dynamically reduces the requested number of threads.
 - `cert.h`, `cert.c`: JSONL writer, verifier, and assembler.  Verification
   first checks the self-describing metadata line, then recomputes all local
   claims and checks that the certificate leaves tile the full root box exactly
   according to the same dyadic splitting rule.  Missing dyadic children fail
   immediately instead of triggering deep subdivision.  Assembly replaces
   survivor leaves through a refinement chain and writes one full-domain
-  certificate, after checking that all inputs have compatible metadata.
+  certificate.  It requires matching schema, exact threshold, enclosure form,
+  half-domain choice, and root; it ORs the two auxiliary-certificate flags and
+  records the minimum component run precision in the assembled metadata.
 - `fence_validate.c`: CLI entry point.
 
 ## Tools
 
-- `analyze_cert.py`: safe summary of certified-low volume, nonoptimal volume,
-  and unresolved survivor neighborhood around the reference trapezoid.
+- `analyze_cert.py`: safe summary of certified-low volume, pair-incompatible
+  volume, and the unresolved survivor neighborhood around the reference
+  trapezoid.  It sums the dyadic box volumes as exact rationals and uses exact
+  rational endpoint tests for the certainly-admissible survivor core.
 - `analyze_refinement_distances.py`: compares each recorded refinement's
-  survivor rectangles to `T*`, reporting diagonal-style Euclidean upper bounds
-  for `A`, `B`, and the full four-coordinate product rectangle.
-- `tests/test_trap.c`: smoke tests for the reference trapezoid, pair-bound
-  formula agreement, series evaluation, admissibility, one sub-threshold
-  certification, the pair-equality nonoptimality certificate, and the
-  flat-area certificate.
+  survivor rectangles to `T*`, reporting floating-point distance diagnostics
+  for `A`, `B`, and the full four-coordinate product rectangle.  These distance
+  figures use ordinary floating point and are explicitly labelled diagnostics;
+  they are not validated certificate bounds.
+- `tests/test_trap.c`: smoke tests for the reference trapezoid and its strict
+  threshold comparison, ordinary obtuse and near-`pi` pair-bound formula
+  agreement, value/derivative series evaluation, admissibility, one
+  sub-threshold certification, the conditional pair-equality compatibility
+  test, and the flat-area certificate.
 - `tests/test_cert_cli.sh`: CLI regression test for certificate verification,
-  including fast failure on a missing certificate leaf.
+  including strict numeric-input checks, legacy status compatibility, null
+  diagnostic fields, dynamic-team OpenMP termination, an exact leaf cap, and
+  fast failure on a missing certificate leaf.
 
 ## Certificate Reading
 
@@ -71,22 +85,34 @@ the area upper endpoint to the exact rational `theta^2/4`.  Numeric
 
 For a threshold `theta`, a verified certificate proves:
 
-- `discarded` boxes contain no normalized admissible quadrilateral;
+- `discarded` boxes contain no normalized admissible quadrilateral, or (when
+  `half=true`) lie wholly outside the selected symmetry half-domain;
 - `certified` boxes have true normalized shortest fence value `<= theta`;
 - `flat_area` boxes have true normalized shortest fence value `<= theta`, by
   the small-area estimate;
-- `nonoptimal` boxes contain no optimizer, because the two opposite-pair fence
-  intervals are disjoint;
+- `pair_incompatible` boxes cannot satisfy the opposite-pair equality
+  hypothesis of Proposition 17, because the two exact pair-value intervals are
+  disjoint;
 - `survivor` boxes are unresolved by the current certificates.
 
-The distinction between `flat_area` and `nonoptimal` matters.  A `flat_area`
-box is a low-fence certificate.  A `nonoptimal` box is a necessary-condition
-certificate: it excludes optimality, but it is not itself a proof that every
-point in the box has shortest fence value below `theta`.
+Legacy schema-3 certificates spell `pair_incompatible` as `nonoptimal`.  The
+current verifier and analysis tools accept both wire-format strings.  The
+legacy name must not be interpreted as an unconditional assertion.
 
-Thus, outside the survivor union, every admissible quadrilateral is either
-certified below `theta` or certified nonoptimal.  Equivalently, outside the
-survivor union there is no possible above-threshold optimizer.
+The distinction between `flat_area` and `pair_incompatible` matters.  A
+`flat_area` box is a low-fence certificate.  A `pair_incompatible` box proves
+only failure of the equality assumed in Proposition 17.  In the manuscript
+that equality applies after the analytic reduction to configurations in which
+both opposite-pair fences are active; it is not a necessary condition stated
+for every possible optimizer.
+
+For `half=false`, outside the survivor union every admissible quadrilateral is
+either certified below `theta` or fails the opposite-pair equality hypothesis.
+Equivalently, within the Proposition 17 equality class (including the relevant
+active-pair cases), there is no possible above-threshold candidate outside the
+survivor union.  For `half=true`, the statement is initially restricted to the
+selected representative half-domain; the full-domain outer neighborhood is
+the union of the survivors and their reflected copies.
 
 ## Cells And Splitting
 
@@ -141,17 +167,21 @@ one B rectangle gives `4 * 4 = 16` four-dimensional cells.
 
 ## Auxiliary Certificates
 
-### Pair-Equality Nonoptimality
+### Conditional Pair-Equality Compatibility
 
-At an actual optimizer, the two fence constructions associated to the two pairs
-of opposite sides must have equal value.  The code encloses the two exact
-opposite-pair candidate values.  If both enclosures are finite and disjoint,
-the box is written as `nonoptimal`.
+Proposition 17 assumes that the two fence constructions associated with the two
+pairs of opposite sides have equal value.  The paper establishes this equality
+in the analytic cases where both pair fences are active.  The code encloses the
+two exact opposite-pair candidate values.  If both enclosures are finite and
+disjoint, the box is written as `pair_incompatible` because it contains no
+quadrilateral satisfying that hypothesis.
 
-This certificate is useful because it removes boxes where the current
-candidate-value envelope is too wide to certify low, but where the necessary
-optimality condition is already impossible.  Its soundness relies on items 4
-and 5 being exact pair-construction values, not arbitrary upper majorants.
+This test is useful because it removes boxes where the candidate-value envelope
+is too wide to certify low, but the conditional equality is impossible.  Its
+soundness relies on items 4 and 5 being exact pair-construction values, with the
+correct sector containing the quadrilateral, rather than arbitrary upper
+majorants.  It does not by itself exclude optimizers in analytic configurations
+where pair equality has not been proved.
 
 ### Flat/Small-Area Low Certificate
 
@@ -205,23 +235,30 @@ have every angle at least `theta^2`, so its largest angle is at most
 2*pi - 3*theta^2.
 ```
 
-For `theta = 1.0496`, this upper bound is
+For `theta = 1.0496`, ordinary high-precision evaluation gives the diagnostic
+approximations
 
 ```text
-2.978204827 radians = 170.638567 degrees.
+2*pi - 3*theta^2 ~= 2.9782048271795865 radians
+                   ~= 170.63856712287902 degrees.
 ```
 
-Equivalently, the excess over a straight angle is at least
+If `alpha_max` is the largest angle, the guaranteed gap from a straight angle
+satisfies
 
 ```text
-3*theta^2 - pi = 0.163387826 radians.
+pi - alpha_max >= 3*theta^2 - pi
+               ~= 0.16338782641020676 radians.
 ```
+
+The exact symbolic expressions, not the rounded diagnostics, carry the
+inequality directions above.
 
 This explains why very flat candidates should be removable.  The implemented
-flat-area certificate is the direct quantitative version used in the current
+flat-area certificate is the direct quantitative version used in the recorded
 runs.
 
-## Reproducing The Current Theta = 1.0496 Run
+## Reproducing The Recorded Theta = 1.0496 Run
 
 These runs were made in serial mode (`--serial`, `OMP=0`) with
 `--form centered`, precision `70`, and both auxiliary certificates enabled:
@@ -289,32 +326,57 @@ Commands:
 
 Observed data:
 
-| Run | wfloor | Time (s) | Leaves | Discarded | Certified | Flat-area | Nonoptimal | Survivors | Survivor volume |
+| Run | wfloor | Time (s) | Leaves | Discarded | Certified | Flat-area | Pair-incompatible | Survivors | Exact survivor volume |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| Base | 0.025 | 79.139 | 215758 | 11555 | 116319 | 213 | 17884 | 69787 | <= 1.66385e-2 |
-| Refine 1 | 0.0125 | 117.585 | 360798 | 2967 | 282735 | 0 | 50065 | 25031 | <= 3.72991e-4 |
-| Refine 2 | 0.00625 | 35.091 | 119594 | 28 | 51386 | 0 | 55878 | 12302 | <= 1.14571e-5 |
-| Refine 3 | 0.003125 | 19.360 | 66134 | 0 | 17312 | 0 | 39816 | 9006 | <= 5.24218e-7 |
-| Refine 4 | 0.0015625 | 14.399 | 49864 | 0 | 10580 | 0 | 31046 | 8238 | <= 2.99697e-8 |
-| Refine 5 | 0.00078125 | 14.503 | 50504 | 0 | 9696 | 0 | 29790 | 11018 | <= 2.5052e-9 |
-| Refine 6 | 0.000390625 | 22.381 | 72276 | 0 | 12739 | 0 | 41012 | 18525 | <= 2.63256e-10 |
+| Base | 0.025 | 79.139 | 215758 | 11555 | 116319 | 213 | 17884 | 69787 | 69787/4194304 |
+| Refine 1 | 0.0125 | 117.585 | 360798 | 2967 | 282735 | 0 | 50065 | 25031 | 25031/67108864 |
+| Refine 2 | 0.00625 | 35.091 | 119594 | 28 | 51386 | 0 | 55878 | 12302 | 6151/536870912 |
+| Refine 3 | 0.003125 | 19.360 | 66134 | 0 | 17312 | 0 | 39816 | 9006 | 4503/8589934592 |
+| Refine 4 | 0.0015625 | 14.399 | 49864 | 0 | 10580 | 0 | 31046 | 8238 | 4119/137438953472 |
+| Refine 5 | 0.00078125 | 14.503 | 50504 | 0 | 9696 | 0 | 29790 | 11018 | 5509/2199023255552 |
+| Refine 6 | 0.000390625 | 22.381 | 72276 | 0 | 12739 | 0 | 41012 | 18525 | 18525/70368744177664 |
 
 After the last recorded refinement, all remaining survivors were certainly
 admissible and the boundary-straddling survivor volume was zero.  The final
 survivor union is contained in
 
 ```text
-R_A = [0.349609375, 0.3662109375] x [0.6921386719, 0.7219238281],
-R_B = [0.6337890625, 0.6499023438] x [0.6921386719, 0.7219238281].
+R_A = [1432/4096, 1500/4096] x [2835/4096, 2957/4096]
+    = [0.349609375, 0.3662109375]
+      x [0.692138671875, 0.721923828125],
+R_B = [2596/4096, 2662/4096] x [2835/4096, 2957/4096]
+    = [0.6337890625, 0.64990234375]
+      x [0.692138671875, 0.721923828125].
 ```
+
+These are exact dyadic endpoints from the certificate.  Shorter decimal
+rounding must be directed outward; the earlier ten-digit display rounded some
+endpoints inward and therefore described a rectangle slightly smaller than the
+actual survivor hull.
+
+The exact sum of the final dyadic survivor-box volumes is
+`18525/70368744177664`, approximately
+`2.6325608359911712e-10`.  This volume is descriptive and is not used in the
+exclusion proof.
 
 The reference trapezoid is
 
 ```text
-A* = (0.3582548434, 0.7071006812),
-B* = (0.6417451566, 0.7071006812),
-f(T*) ~= 1.04968581549.
+A_ref = (0.3582548434, 0.7071006812),
+B_ref = (0.6417451566, 0.7071006812),
+Phi(T_ref) >= 1.04968581409050329 > 1.0496.
 ```
+
+These decimal literals are parsed as binary64 values.  The exact coordinates
+are `A_ref.x=0x1.6eda5b90257aep-2`,
+`B_ref.x=0x1.4892d237ed429p-1`, and
+`A_ref.y=B_ref.y=0x1.6a0919b977760p-1` in C99 hexadecimal notation.
+
+At 160-bit precision, evaluating this explicit admissible reference
+quadrilateral gives the Arb enclosure
+`[1.0496858140905033070 +/- 1.24e-20]`.  The strict lower endpoint, not merely a
+rounded conjectural value, is what proves that any quadrilateral certified at
+or below `1.0496` cannot be a global maximizer.
 
 The equal-axis PNG figure is
 `Documentation/figures/current_survivor_rectangles.png`.  The overview PNG
@@ -328,13 +390,15 @@ python3 analyze_refinement_distances.py
 ```
 
 The analyzer takes the survivor bounding rectangles from each refinement and
-computes farthest-corner distances from
+computes ordinary floating-point farthest-corner diagnostics from
 `A* = (0.3582548434, 0.7071006812)` and
 `B* = (0.6417451566, 0.7071006812)`.  The four-dimensional product bound is
-`sqrt(A_bound^2 + B_bound^2)`.  `max leaf 4D bound` is the tighter maximum over
-individual survivor leaves rather than over the displayed product rectangle.
+`sqrt(A_distance^2 + B_distance^2)`.  `max leaf 4D distance` is the tighter
+diagnostic over individual survivor leaves rather than over the displayed
+product rectangle.  These values are not interval-certified and are not used
+in the proof.
 
-| File | Survivors | A rectangle bound | B rectangle bound | 4D product bound | Max leaf 4D bound |
+| File | Survivors | A distance (diagnostic) | B distance (diagnostic) | 4D product distance (diagnostic) | Max leaf 4D distance (diagnostic) |
 | --- | ---: | ---: | ---: | ---: | ---: |
 | `flat_pair_cert_w0025.jsonl` | 69787 | 0.898853283 | 0.925578382 | 1.2902064 | 0.832882346 |
 | `flat_pair_refine_w00125.jsonl` | 25031 | 0.61938547 | 0.647089329 | 0.895747152 | 0.640574016 |
@@ -369,24 +433,52 @@ Recorded assembled audit:
 
 ```text
 verify: 799546 leaves  (discard 14550, certify 500767, flat_area 213,
-        nonoptimal 265491, survivor 18525)  prec=70
+        pair_incompatible 265491, survivor 18525)  prec=70
 verify: dyadic partition coverage of the full root box: PASSED
-verify: worst re-checked certified f_hi = 1.0495999994684
+verify: worst re-checked certified f_hi = 1.0495999994684  (theta = 1.0496)
 verify: 0 failures -> AUDIT PASSED
 ```
+
+This is the repaired verifier's output.  The historical JSONL leaf records use
+the legacy status string `nonoptimal`; the verifier reports those records as
+`pair_incompatible`.  They record failure of the Proposition 17 equality
+hypothesis, not unconditional nonoptimality.  The displayed `f_hi` is a
+rounded binary64 diagnostic; the audit result comes from direct comparison of
+each Arb upper endpoint with the exact rational threshold.
+
+### Artifact provenance
+
+The historical assembled artifact above has SHA-256
+
+```text
+58e3a555c83b54e90676062092eaa988da5bf247435949fa663a229921ad8000
+```
+
+The C source used for the recorded chain was unchanged since commit
+`5bcd9694c66cbeab03515c624225f7398c74bc82`; the final refinement and results
+were documented in commit `c6dcd2dcebffad89d8143352f719bd6bfa83877b`.
+The repaired verifier has rechecked this same artifact in full: all 799,546
+leaves and the dyadic cover pass unchanged.  Because JSONL artifacts are
+intentionally ignored by Git, a publishable proof package should archive the
+compressed assembled certificate, tag the exact repaired verifier source, and
+publish hashes for both.  Regeneration is optional but would emit the canonical
+`pair_incompatible` status; any regenerated artifact needs its own source and
+checksum record.
 
 ## Current Conclusion
 
 For `theta = 1.0496`, with the current code and recorded refinement chain, the
 remaining unresolved region is contained in `R_A x R_B` above.  Consequently,
 outside `R_A x R_B`, every admissible normalized quadrilateral is either
-certified to have shortest fence value at most `1.0496` or is certified
-nonoptimal by the pair-equality necessary condition.
+certified to have shortest fence value at most `1.0496` or is proved
+incompatible with the opposite-pair equality hypothesis in Proposition 17.
 
-This means there is no possible above-threshold optimizer outside
-`R_A x R_B`.  The statement is not that every point outside the product
-rectangle is low by a fence-length bound alone; some boxes are eliminated by
-the independent nonoptimality certificate.
+After the paper's analytic reduction to the cases in which both opposite-pair
+fences are active, this means there is no possible above-threshold candidate
+outside `R_A x R_B`.  Without that reduction, the numerical statement is only
+the disjunction “certified low or pair-incompatible”; it is not a global
+nonoptimality theorem.  Nor does it say that every point outside the product
+rectangle is low by a fence-length bound alone.
 
 The refinement files listed above are incremental.  Use `--assemble` to obtain
 a single auditable certificate for the whole root domain, then run

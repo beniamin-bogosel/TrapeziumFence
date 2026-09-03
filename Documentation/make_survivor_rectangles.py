@@ -9,8 +9,10 @@ from matplotlib.patches import Rectangle
 # Public notation: D=(0,0), C=(1,0), B is the right mobile vertex and A is the
 # left mobile vertex.  Internally, B is stored in the old C-slots and A in the
 # old D-slots.
-B_RECT = ((0.6337890625, 0.6499023438), (0.6921386719, 0.7219238281))
-A_RECT = ((0.349609375, 0.3662109375), (0.6921386719, 0.7219238281))
+B_RECT = ((0.6337890625, 0.64990234375),
+          (0.692138671875, 0.721923828125))
+A_RECT = ((0.349609375, 0.3662109375),
+          (0.692138671875, 0.721923828125))
 BSTAR = (0.6417451566, 0.7071006812)
 ASTAR = (0.3582548434, 0.7071006812)
 FIG_DIR = Path(__file__).resolve().parent / "figures"
@@ -56,8 +58,8 @@ def add_survivor_panel(ax, rect, star, title, xvar, yvar):
     ax.grid(True, color="#d8dee3", linewidth=0.8)
 
     text = (
-        rf"${xvar}\in[{xlo:.9f},\,{xhi:.9f}]$" + "\n" +
-        rf"${yvar}\in[{ylo:.9f},\,{yhi:.9f}]$"
+        rf"${xvar}\in[{xlo:.12f},\,{xhi:.12f}]$" + "\n" +
+        rf"${yvar}\in[{ylo:.12f},\,{yhi:.12f}]$"
     )
     ax.text(
         0.5,
@@ -152,7 +154,7 @@ def add_overview():
     gs = fig.add_gridspec(2, 2, height_ratios=[1.45, 1.0], hspace=0.34, wspace=0.18)
     ax = fig.add_subplot(gs[0, :])
     add_trapezium_panel(ax, show_coordinate_labels=True)
-    ax.set_title(r"Survivor rectangles inside the conjectured trapezium neighborhood",
+    ax.set_title(r"Survivor rectangles for the Proposition 17 equality class",
                  fontsize=22, pad=12)
 
     left = fig.add_subplot(gs[1, 0])
@@ -178,7 +180,7 @@ def add_three_panel():
     add_compact_zoom_panel(right, B_RECT, BSTAR, r"$\mathcal{R}_B$ near $B^\ast$",
                            r"$B^\ast$", r"b_1", r"b_2")
 
-    fig.suptitle(r"Region near conjectured trapezium containing possible competitors",
+    fig.suptitle(r"Survivors in the Proposition 17 equality class near $T^\ast$",
                  fontsize=12.5, y=0.96)
     fig.subplots_adjust(left=0.045, right=0.992, top=0.80, bottom=0.29)
     fig.savefig(THREE_PANEL_OUT, dpi=300)
@@ -197,7 +199,8 @@ def main():
     add_survivor_panel(axes[0], A_RECT, ASTAR, r"$A^\ast$", r"a_1", r"a_2")
     add_survivor_panel(axes[1], B_RECT, BSTAR, r"$B^\ast$", r"b_1", r"b_2")
 
-    fig.suptitle(r"Current survivor rectangles near $T^\ast$", fontsize=22, y=0.965)
+    fig.suptitle(r"Survivor rectangles for Proposition 17 near $T^\ast$",
+                 fontsize=22, y=0.965)
     fig.subplots_adjust(left=0.07, right=0.985, top=0.9, bottom=0.125, wspace=0.2)
     FIG_DIR.mkdir(parents=True, exist_ok=True)
     fig.savefig(RECT_OUT, dpi=100)

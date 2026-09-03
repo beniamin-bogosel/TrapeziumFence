@@ -78,7 +78,7 @@ static int classify(const box_t *b, const search_params *p,
         functionals_opposite_pairs_disjoint(b->lo, b->hi, p->form, prec)) {
         *used_prec = prec;
         *item = -1;
-        return LEAF_NONOPTIMAL;
+        return LEAF_PAIR_INCOMPATIBLE;
     }
 
     int act = functionals_min(fenc, b->lo, b->hi, p->form, prec);
@@ -131,8 +131,8 @@ static void stats_add_leaf(search_stats *st, const box_t *b, int status,
         st->n_discard++;
     } else if (status == LEAF_FLAT_AREA) {
         st->n_flat_area++;
-    } else if (status == LEAF_NONOPTIMAL) {
-        st->n_nonoptimal++;
+    } else if (status == LEAF_PAIR_INCOMPATIBLE) {
+        st->n_pair_incompatible++;
     } else if (status == LEAF_CERTIFIED) {
         st->n_certified++;
         arf_t u; arf_init(u);
@@ -180,7 +180,7 @@ static void run_serial(const search_params *p, search_stats *st,
             stats_add_leaf(st, &b, status, fenc, up);
             if (cb) cb(ctx, b.lo, b.hi, status,
                        item,
-                       (status == LEAF_DISCARD || status == LEAF_NONOPTIMAL ||
+                       (status == LEAF_DISCARD || status == LEAF_PAIR_INCOMPATIBLE ||
                         status == LEAF_FLAT_AREA) ? NULL : fenc, up);
             if (p->max_leaves && st->n_leaves >= p->max_leaves) break;
         }
@@ -194,17 +194,25 @@ static void run_serial(const search_params *p, search_stats *st,
 static void run_parallel(const search_params *p, search_stats *st,
                          leaf_fn cb, void *ctx, stack_t *sp) {
     stack_t s = *sp;   /* take ownership */
-    int nthreads = omp_get_max_threads();
-    volatile int idle = 0;
-    volatile int stop = 0;
+    int idle = 0;
+    int stop = 0;
 
     #pragma omp parallel
     {
+        /* Dynamic OpenMP teams may contain fewer workers than the maximum
+         * requested outside the region.  Termination must use this region's
+         * actual team size or the idle count may never reach its target. */
+        int nthreads = omp_get_num_threads();
         box_t b, c0, c1;
         arb_t fenc;
         arb_init(fenc);
         int counted_idle = 0;
         for (;;) {
+            int stop_at_top;
+            #pragma omp atomic read
+            stop_at_top = stop;
+            if (stop_at_top) break;
+
             int got = 0;
             #pragma omp critical (trap_stack)
             {
@@ -217,7 +225,12 @@ static void run_parallel(const search_params *p, search_stats *st,
                     idle++;
                     counted_idle = 1;
                 }
-                if (idle >= nthreads || stop) break;
+                int idle_now, stop_now;
+                #pragma omp atomic read
+                idle_now = idle;
+                #pragma omp atomic read
+                stop_now = stop;
+                if (idle_now >= nthreads || stop_now) break;
                 continue;
             }
             if (counted_idle) {
@@ -237,12 +250,23 @@ static void run_parallel(const search_params *p, search_stats *st,
             } else {
                 #pragma omp critical (trap_stats)
                 {
-                    stats_add_leaf(st, &b, status, fenc, up);
-                    if (cb) cb(ctx, b.lo, b.hi, status,
-                               item,
-                               (status == LEAF_DISCARD || status == LEAF_NONOPTIMAL ||
-                                status == LEAF_FLAT_AREA) ? NULL : fenc, up);
-                    if (p->max_leaves && st->n_leaves >= p->max_leaves) stop = 1;
+                    /* Several threads may have classified a leaf when the cap
+                     * is reached.  Serialize the admission check so the
+                     * debugging cap is not exceeded.  Omitted work makes the
+                     * output intentionally incomplete, and verification will
+                     * reject it as such. */
+                    if (!p->max_leaves || st->n_leaves < p->max_leaves) {
+                        stats_add_leaf(st, &b, status, fenc, up);
+                        if (cb) cb(ctx, b.lo, b.hi, status,
+                                   item,
+                                   (status == LEAF_DISCARD ||
+                                    status == LEAF_PAIR_INCOMPATIBLE ||
+                                    status == LEAF_FLAT_AREA) ? NULL : fenc, up);
+                    }
+                    if (p->max_leaves && st->n_leaves >= p->max_leaves) {
+                        #pragma omp atomic write
+                        stop = 1;
+                    }
                 }
             }
         }

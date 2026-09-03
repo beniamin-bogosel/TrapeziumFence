@@ -5,12 +5,15 @@ The certificate is an exclusion certificate.  On a certified box the program has
 proved that one of the six rigorous upper bounds for the normalized shortest
 fence is at most theta, hence the true shortest fence is at most theta there.
 Survivor boxes are unresolved: they are the current outer neighborhood in which
-the value may still exceed theta.
+the value may still exceed theta.  Pair-incompatible leaves fail the
+opposite-pair equality hypothesis of Proposition 17; that is a conditional
+exclusion, not a global nonoptimality claim.
 """
 import argparse
 import json
 import math
 import sys
+from fractions import Fraction
 
 # Public notation: D=(0,0), C=(1,0), B=(b1,b2), A=(a1,a2).
 # The JSONL coordinate order is still the implementation order
@@ -26,8 +29,16 @@ def mirror(pt):
 TSTAR_M = mirror(TSTAR)
 
 
-def box_volume(box):
-    return math.prod(hi - lo for lo, hi in box)
+def box_volume_exact(box):
+    """Exact volume of the binary64 endpoint box used by the C verifier."""
+    volume = Fraction(1)
+    for lo, hi in box:
+        volume *= Fraction.from_float(hi) - Fraction.from_float(lo)
+    return volume
+
+
+def volume_sum(rows):
+    return sum((box_volume_exact(row["box"]) for row in rows), Fraction(0))
 
 
 def box_dist(box, ref):
@@ -40,34 +51,41 @@ def box_dist(box, ref):
     return math.sqrt(dmin2), math.sqrt(dmax2)
 
 
-def certainly_admissible(box, eps=1e-12):
-    (c1l, c1h), (c2l, c2h), (d1l, d1h), (d2l, d2h) = box
-    if c2l <= eps or d2l <= eps:
+def certainly_admissible(box):
+    """Prove the box lies in the admissible region using exact rationals.
+
+    JSON endpoints are read as binary64, exactly as in the C verifier.  The
+    relevant cross products are multiaffine, so their extrema occur at box
+    corners; squared-distance maxima are attained at coordinate endpoints.
+    """
+    fbox = [[Fraction.from_float(x) for x in interval] for interval in box]
+    (c1l, c1h), (c2l, c2h), (d1l, d1h), (d2l, d2h) = fbox
+    if c2l <= 0 or d2l <= 0:
         return False
 
     for c1 in (c1l, c1h):
         for c2 in (c2l, c2h):
             for d1 in (d1l, d1h):
                 for d2 in (d2l, d2h):
-                    bcx, bcy = c1 - 1.0, c2
+                    bcx, bcy = c1 - 1, c2
                     cdx, cdy = d1 - c1, d2 - c2
-                    if bcx * cdy - bcy * cdx <= eps:
+                    if bcx * cdy - bcy * cdx <= 0:
                         return False
-                    if c1 * d2 - d1 * c2 <= eps:
+                    if c1 * d2 - d1 * c2 <= 0:
                         return False
 
     def sqmax(al, ah, ref):
         return max((al - ref) ** 2, (ah - ref) ** 2)
 
-    if sqmax(c1l, c1h, 1.0) + sqmax(c2l, c2h, 0.0) > 1.0 - eps:
+    if sqmax(c1l, c1h, 1) + sqmax(c2l, c2h, 0) > 1:
         return False
-    if sqmax(d1l, d1h, 0.0) + sqmax(d2l, d2h, 0.0) > 1.0 - eps:
+    if sqmax(d1l, d1h, 0) + sqmax(d2l, d2h, 0) > 1:
         return False
     cd_x = max((c1l - d1l) ** 2, (c1l - d1h) ** 2,
                (c1h - d1l) ** 2, (c1h - d1h) ** 2)
     cd_y = max((c2l - d2l) ** 2, (c2l - d2h) ** 2,
                (c2h - d2l) ** 2, (c2h - d2h) ** 2)
-    return cd_x + cd_y <= 1.0 - eps
+    return cd_x + cd_y <= 1
 
 
 def folded_dist(box, no_mirror):
@@ -88,14 +106,19 @@ def bbox(boxes):
 def load(path):
     with open(path) as fh:
         rows = [json.loads(line) for line in fh]
-    return [o for o in rows if o.get("type") != "meta" and "status" in o]
+    metadata = next((o for o in rows if o.get("type") == "meta"), {})
+    leaves = [o for o in rows if o.get("type") != "meta" and "status" in o]
+    return metadata, leaves
 
 
 def print_public_rectangles(box):
-    print(f"  A: [{box[2][0]:.10g}, {box[2][1]:.10g}] x "
-          f"[{box[3][0]:.10g}, {box[3][1]:.10g}]")
-    print(f"  B: [{box[0][0]:.10g}, {box[0][1]:.10g}] x "
-          f"[{box[1][0]:.10g}, {box[1][1]:.10g}]")
+    # Certificate endpoints are binary64 dyadics.  Seventeen significant
+    # digits round-trip them exactly; shorter formatting can round a lower
+    # endpoint upward or an upper endpoint downward.
+    print(f"  A: [{box[2][0]:.17g}, {box[2][1]:.17g}] x "
+          f"[{box[3][0]:.17g}, {box[3][1]:.17g}]")
+    print(f"  B: [{box[0][0]:.17g}, {box[0][1]:.17g}] x "
+          f"[{box[1][0]:.17g}, {box[1][1]:.17g}]")
 
 
 def main():
@@ -107,42 +130,55 @@ def main():
                     help="do not fold distances by x -> 1-x, C <-> D")
     args = ap.parse_args()
 
-    leaves = load(args.cert)
+    metadata, leaves = load(args.cert)
     surv = [o for o in leaves if o["status"] == "survivor"]
     cert = [o for o in leaves if o["status"] in ("certified", "low")]
     flat = [o for o in leaves if o["status"] == "flat_area"]
     disc = [o for o in leaves if o["status"] == "discarded"]
-    nonopt = [o for o in leaves if o["status"] == "nonoptimal"]
+    # schema-3 files used "nonoptimal".  New files use the semantically
+    # accurate name "pair_incompatible"; accept both during migration.
+    pair_incompat = [o for o in leaves
+                     if o["status"] in ("pair_incompatible", "nonoptimal")]
 
-    vol_total = sum(box_volume(o["box"]) for o in leaves)
-    vol_cert = sum(box_volume(o["box"]) for o in cert)
-    vol_flat = sum(box_volume(o["box"]) for o in flat)
-    vol_surv = sum(box_volume(o["box"]) for o in surv)
-    vol_disc = sum(box_volume(o["box"]) for o in disc)
-    vol_nonopt = sum(box_volume(o["box"]) for o in nonopt)
+    vol_total = volume_sum(leaves)
+    vol_cert = volume_sum(cert)
+    vol_flat = volume_sum(flat)
+    vol_surv = volume_sum(surv)
+    vol_disc = volume_sum(disc)
+    vol_pair_incompat = volume_sum(pair_incompat)
 
     print(f"leaves: {len(leaves)}")
-    print(f"  certified low boxes : {len(cert)}  volume {vol_cert:.12g}")
-    print(f"  flat-area low boxes : {len(flat)}  volume {vol_flat:.12g}")
-    print(f"  discarded boxes     : {len(disc)}  volume {vol_disc:.12g}")
-    print(f"  nonoptimal boxes    : {len(nonopt)}  volume {vol_nonopt:.12g}")
-    print(f"  unresolved survivors: {len(surv)}  volume {vol_surv:.12g}")
-    print(f"  total tiled volume  : {vol_total:.12g}")
+    print(f"  certified low boxes : {len(cert)}  volume ~{float(vol_cert):.12g}")
+    print(f"  flat-area low boxes : {len(flat)}  volume ~{float(vol_flat):.12g}")
+    print(f"  discarded boxes     : {len(disc)}  volume ~{float(vol_disc):.12g}")
+    print(f"  pair-incompatible   : {len(pair_incompat)}  volume ~{float(vol_pair_incompat):.12g}")
+    print(f"  unresolved survivors: {len(surv)}  volume ~{float(vol_surv):.12g}")
+    print(f"  exact survivor volume: {vol_surv}")
+    print(f"  exact total tiled volume: {vol_total}")
     if args.theta is not None:
         print(f"\nCertified boxes prove shortest fence / sqrt(area) <= {args.theta:g}.")
-    print("Discarded boxes contain no normalized admissible quadrilateral.")
-    if nonopt:
-        print("Nonoptimal boxes fail the necessary equality of the two opposite-pair fences.")
+    if metadata.get("half", False):
+        print("Discarded boxes are inadmissible or outside the selected symmetry half-domain.")
+    else:
+        print("Discarded boxes contain no normalized admissible quadrilateral.")
+    if pair_incompat:
+        print("Pair-incompatible boxes fail the opposite-pair equality hypothesis "
+              "of Proposition 17.")
 
     if not surv:
         print("\nNo survivors: every normalized admissible quadrilateral is either "
-              "certified low, flat-area low, or certified nonoptimal.")
+              "certified low, flat-area low, or pair-incompatible.")
+        if pair_incompat:
+            print("Consequently, within the Proposition 17 equality class (including "
+                  "the active-pair analytic cases), no above-threshold candidate remains.")
         return 0
 
     b = bbox(surv)
     print("\nUnresolved survivor union:")
     print_public_rectangles(b)
 
+    print("  (Distances below are ordinary floating-point diagnostics, not "
+          "validated certificate bounds.)")
     dists = [folded_dist(o["box"], args.no_mirror) for o in surv]
     near = min(d[0] for d in dists)
     far = max(d[1] for d in dists)
@@ -155,15 +191,21 @@ def main():
         core_box = bbox(core)
         core_d = [folded_dist(o["box"], args.no_mirror) for o in core]
         print("\nCertainly-admissible survivor core:")
-        print(f"  boxes: {len(core)}  volume {sum(box_volume(o['box']) for o in core):.12g}")
+        core_volume = volume_sum(core)
+        print(f"  boxes: {len(core)}  volume ~{float(core_volume):.12g} "
+              f"(exact {core_volume})")
         print_public_rectangles(core_box)
         print(f"  farthest box point from T*: {max(d[1] for d in core_d):.8g}")
     print("\nBoundary-straddling survivors:")
-    print(f"  boxes: {len(shell)}  volume {sum(box_volume(o['box']) for o in shell):.12g}")
+    shell_volume = volume_sum(shell)
+    print(f"  boxes: {len(shell)}  volume ~{float(shell_volume):.12g} "
+          f"(exact {shell_volume})")
 
-    if nonopt:
+    if pair_incompat:
         print("\nSound reading: outside the survivor union, every admissible normalized "
-              "quadrilateral is either certified below theta or certified nonoptimal.")
+              "quadrilateral is either certified below theta or fails the opposite-pair "
+              "equality hypothesis.  Thus the exclusion of above-threshold candidates "
+              "is conditional on Proposition 17 or the active-pair analytic reduction.")
     else:
         print("\nSound reading: outside the survivor union, every admissible normalized "
               "quadrilateral has a certified fence no longer than theta.")

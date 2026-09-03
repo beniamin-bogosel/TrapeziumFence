@@ -1,7 +1,8 @@
 /* admissible.h -- interval admissibility test for a box of quadrilaterals.
  *
  * A box (c1,c2,d1,d2 ranges) is DISCARDED only if some admissibility predicate
- * is *certainly* violated over the whole box (the interval proves it false).
+ * is *certainly* violated over the whole box (the interval proves it false),
+ * or, in --half mode, if it lies wholly outside the selected symmetry half.
  * If a predicate merely straddles its constraint the box is KEPT: the six
  * functionals remain valid upper bounds on the admissible sub-part, so a
  * straddling box that still certifies below theta is sound to reject.
@@ -18,7 +19,8 @@
 
 #include "geom.h"
 
-/* Returns 1 if the box is certainly inadmissible (safe to DISCARD), else 0. */
+/* Returns 1 if the box is certainly inadmissible or symmetry-pruned (safe to
+ * DISCARD under the recorded half flag), else 0. */
 int box_certainly_inadmissible(const double lo[4], const double hi[4],
                                int half, slong prec);
 

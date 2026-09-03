@@ -2,7 +2,7 @@
 """Distance-to-T* summary for refinement survivor files.
 
 For each certificate/refinement JSONL file, this script reads the unresolved
-survivor leaves and computes simple Euclidean upper bounds on the distance to
+survivor leaves and computes simple Euclidean distance diagnostics relative to
 the reference trapezoid T*.  The public notation is D=(0,0), C=(1,0), with
 mobile vertices B=(b1,b2) and A=(a1,a2).  The JSONL files still store these
 coordinates in implementation order (b1,b2,a1,a2).
@@ -13,8 +13,10 @@ in that file:
     R_A = [a1_min,a1_max] x [a2_min,a2_max]
     R_B = [b1_min,b1_max] x [b2_min,b2_max].
 
-The A and B bounds are the farthest-corner distances from A* and B* to those
-rectangles.  The 4D bound is sqrt(A_bound^2 + B_bound^2).
+The A and B figures are ordinary floating-point farthest-corner distance
+diagnostics from the displayed decimal approximations A* and B* to those
+rectangles.  The 4D diagnostic is sqrt(A_distance^2 + B_distance^2).  They are
+not validated interval bounds and do not form part of the certificate.
 """
 import argparse
 import json
@@ -69,7 +71,9 @@ def box_distance_4d(box):
 
 
 def fmt_interval(pair):
-    return f"[{pair[0]:.10g}, {pair[1]:.10g}]"
+    # JSON endpoints are binary64 dyadics; retain enough digits to round-trip
+    # them rather than accidentally displaying an inward-rounded rectangle.
+    return f"[{pair[0]:.17g}, {pair[1]:.17g}]"
 
 
 def analyze(path):
@@ -105,11 +109,13 @@ def analyze(path):
 
 
 def print_table(rows):
-    print("Distance-to-T* upper bounds from survivor rectangles")
+    print("Distance-to-T* floating-point diagnostics from survivor rectangles")
     print(f"A* = ({ASTAR[0]:.10g}, {ASTAR[1]:.10g})")
     print(f"B* = ({BSTAR[0]:.10g}, {BSTAR[1]:.10g})")
     print()
-    print("| file | survivors | A rectangle bound | B rectangle bound | 4D product bound | max leaf 4D bound |")
+    print("These figures are diagnostics, not validated certificate bounds.")
+    print()
+    print("| file | survivors | A distance | B distance | 4D product distance | max leaf 4D distance |")
     print("| --- | ---: | ---: | ---: | ---: | ---: |")
     for row in rows:
         name = os.path.basename(row["path"])

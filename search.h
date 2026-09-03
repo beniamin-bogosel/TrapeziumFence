@@ -1,12 +1,12 @@
 /* search.h -- dyadic subdivision search over the moduli box.
  *
  * Refine-until-below-threshold:
- *   DISCARD   box certainly inadmissible;
+ *   DISCARD   box certainly inadmissible, or outside the selected --half domain;
  *   CERTIFY   f_hi <= exact decimal theta  (shortest fence is proved low);
  *   FLAT      area upper bound <= exact theta^2/4, so the flat-area fence estimate
  *             L/sqrt(A) <= 2 sqrt(A) certifies the box low;
- *   NONOPT    opposite-pair fence intervals are disjoint, so the box contains
- *             no optimizer by the pair-equality necessary condition;
+ *   PAIR      opposite-pair fence intervals are disjoint, so the box contains
+ *             no shape satisfying the pair-equality hypothesis;
  *   SURVIVOR  f_hi > theta and scaled width <= wfloor (retained, not split further);
  *   else      bisect the widest (span-scaled) coordinate and recurse.
  *
@@ -21,7 +21,7 @@
 #include "functionals.h"
 
 enum { LEAF_DISCARD = 0, LEAF_CERTIFIED = 1, LEAF_SURVIVOR = 2,
-       LEAF_NONOPTIMAL = 3, LEAF_FLAT_AREA = 4 };
+       LEAF_PAIR_INCOMPATIBLE = 3, LEAF_FLAT_AREA = 4 };
 
 typedef struct {
     double theta;          /* display/adaptive heuristic only */
@@ -31,7 +31,7 @@ typedef struct {
     slong  maxprec;       /* cap for adaptive precision */
     int    half;          /* quotient the reflection symmetry */
     int    adaptive_prec; /* retry marginal undecided boxes at higher prec */
-    int    pair_eq_cert;  /* certify nonoptimal if opposite-pair intervals disagree */
+    int    pair_eq_cert;  /* exclude boxes incompatible with opposite-pair equality */
     int    flat_area_cert;/* certify low if area upper bound <= theta^2/4 */
     enclosure_form form;
     long   max_leaves;    /* debugging cap; truncated runs fail full verification */
@@ -39,19 +39,21 @@ typedef struct {
 } search_params;
 
 typedef struct {
-    long n_discard, n_certified, n_flat_area, n_nonoptimal, n_survivor;
+    long n_discard, n_certified, n_flat_area, n_pair_incompatible, n_survivor;
     long n_leaves, n_internal;
     double surv_lo[4], surv_hi[4];
     double surv_centroid[4];  /* volume-weighted mean of survivor box centres */
-    double surv_vol;          /* sum of physical survivor box volumes (upper bnd) */
-    double max_cert_fhi;      /* largest certified f_hi (self-audit: must be <= theta) */
+    double surv_vol;          /* diagnostic double sum of physical box volumes */
+    double max_cert_fhi;      /* rounded-up double diagnostic; proof check is exact */
     slong  max_prec_used;
     int    have_survivor;
 } search_stats;
 
-/* Leaf callback: invoked once per leaf (discard/certify/survivor).
- * encl is the min-enclosure [flo,fhi] of f over the box (undefined for discard,
- * where it is passed as NULL). item is the active item index (or -1). */
+/* Leaf callback: invoked once per leaf.  encl carries the minimum finite
+ * candidate upper bound for certified and survivor leaves; its lower endpoint
+ * is diagnostic if any candidate was non-finite.  encl is NULL for discarded,
+ * flat-area, and pair-incompatible leaves.  item is the active item index (or
+ * a negative sentinel when no candidate item supplied the status). */
 typedef void (*leaf_fn)(void *ctx, const double lo[4], const double hi[4],
                         int status, int item, const arb_t encl, slong prec);
 

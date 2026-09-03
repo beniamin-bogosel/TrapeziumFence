@@ -7,6 +7,11 @@
 #include <stdlib.h>
 #include <string.h>
 
+/* Thresholds originate as short human-readable decimal literals.  Bounding
+ * the power-of-ten shift prevents an untrusted certificate from requesting
+ * an effectively unbounded integer allocation. */
+#define MAX_DECIMAL_SHIFT 100000L
+
 #if defined(ARB_IN_FLINT)
 #include <flint/fmpz.h>
 #else
@@ -85,14 +90,23 @@ int threshold_parse_fmpq(fmpq_t q, const char *s) {
         fail = 1;
     } else {
         if (neg) fmpz_neg(fmpq_numref(q), fmpq_numref(q));
-        long shift = exp10 - frac;
-        if (shift >= 0) {
+        long shift = 0;
+        if (exp10 < LONG_MIN + frac) {
+            fail = 1;
+        } else {
+            shift = exp10 - frac;
+        }
+        if (!fail && (shift < -MAX_DECIMAL_SHIFT ||
+                      shift > MAX_DECIMAL_SHIFT)) {
+            fail = 1;
+        }
+        if (!fail && shift >= 0) {
             fmpz_ui_pow_ui(pow10, 10, (ulong)shift);
             fmpz_mul(fmpq_numref(q), fmpq_numref(q), pow10);
             fmpz_one(fmpq_denref(q));
-        } else {
-            unsigned long den_exp = (unsigned long)(-shift);
-            fmpz_ui_pow_ui(fmpq_denref(q), 10, (ulong)den_exp);
+        } else if (!fail) {
+            ulong den_exp = (ulong)(-shift);
+            fmpz_ui_pow_ui(fmpq_denref(q), 10, den_exp);
         }
         if (!fail) fmpq_canonicalise(q);
     }
@@ -131,7 +145,7 @@ int threshold_area_ub_leq(const arf_t area_ub, const char *theta_str) {
     fmpq_init(limit);
     arf_get_fmpq(lhs, area_ub);
     int ok = 0;
-    if (!threshold_parse_fmpq(theta, theta_str)) {
+    if (!threshold_parse_fmpq(theta, theta_str) && fmpq_sgn(theta) > 0) {
         fmpq_mul(limit, theta, theta);
         fmpq_div_2exp(limit, limit, 2);
         ok = fmpq_cmp(lhs, limit) <= 0;

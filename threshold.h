@@ -11,7 +11,8 @@
 #endif
 
 /* Parse a finite decimal literal, including optional scientific notation, as
- * the exact rational represented by the characters.  Returns 0 on success. */
+ * the exact rational represented by the characters.  Pathologically large
+ * powers of ten are rejected.  Returns 0 on success. */
 int threshold_parse_fmpq(fmpq_t q, const char *s);
 
 /* Convert an exact threshold literal to an Arb ball. */

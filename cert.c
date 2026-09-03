@@ -63,7 +63,10 @@ static int json_string_field(const char *line, const char *name,
     p++;
     size_t n = 0;
     while (*p && *p != '"') {
-        if (n + 1 < out_sz) out[n++] = *p;
+        /* Reject overflow rather than silently verifying a truncated value.
+         * This matters in particular for the exact threshold literal. */
+        if (n + 1 >= out_sz) return 0;
+        out[n++] = *p;
         p++;
     }
     if (*p != '"') return 0;
@@ -125,6 +128,7 @@ static int parse_meta_line(const char *line, cert_meta *m) {
     fmpq_t theta_q;
     fmpq_init(theta_q);
     int theta_bad = threshold_parse_fmpq(theta_q, tmp.theta_str);
+    if (!theta_bad && fmpq_sgn(theta_q) <= 0) theta_bad = 1;
     fmpq_clear(theta_q);
     if (theta_bad) return -1;
     if (!json_long_field(line, "schema", &schema) ||
@@ -184,7 +188,7 @@ static const char *status_name(int s) {
     switch (s) {
         case LEAF_DISCARD:   return "discarded";
         case LEAF_CERTIFIED: return "certified";
-        case LEAF_NONOPTIMAL:return "nonoptimal";
+        case LEAF_PAIR_INCOMPATIBLE:return "pair_incompatible";
         case LEAF_FLAT_AREA: return "flat_area";
         default:             return "survivor";
     }
@@ -203,7 +207,7 @@ void cert_write_leaf(void *ctx, const double lo[4], const double hi[4],
     }
     /* JSON has no inf/nan literals: emit them as null. */
     char eb[64];
-    if (isfinite(flo) && isfinite(fhi))
+    if (encl && isfinite(flo) && isfinite(fhi))
         snprintf(eb, sizeof eb, "[%.17g,%.17g]", flo, fhi);
     else
         snprintf(eb, sizeof eb, "[null,null]");
@@ -216,7 +220,7 @@ void cert_write_leaf(void *ctx, const double lo[4], const double hi[4],
 
 /* ---- verifier ---- */
 static int parse_line(const char *line, double lo[4], double hi[4],
-                      char status[16], int *item) {
+                      char status[32], int *item) {
     const char *b = strstr(line, "\"box\":[[");
     if (!b) return 0;
     b += 6; /* advance to the first '[' of the box array */
@@ -227,7 +231,7 @@ static int parse_line(const char *line, double lo[4], double hi[4],
     if (!s) return 0;
     s += strlen("\"status\":\"");
     int i = 0;
-    while (*s && *s != '"' && i < 15) status[i++] = *s++;
+    while (*s && *s != '"' && i < 31) status[i++] = *s++;
     status[i] = '\0';
     const char *it = strstr(line, "\"item\":");
     *item = it ? atoi(it + strlen("\"item\":")) : -1;
@@ -246,7 +250,8 @@ static int parse_status(const char *status) {
     if (strcmp(status, "discarded") == 0) return LEAF_DISCARD;
     if (strcmp(status, "certified") == 0) return LEAF_CERTIFIED;
     if (strcmp(status, "low") == 0) return LEAF_CERTIFIED;
-    if (strcmp(status, "nonoptimal") == 0) return LEAF_NONOPTIMAL;
+    if (strcmp(status, "nonoptimal") == 0) return LEAF_PAIR_INCOMPATIBLE;
+    if (strcmp(status, "pair_incompatible") == 0) return LEAF_PAIR_INCOMPATIBLE;
     if (strcmp(status, "flat_area") == 0) return LEAF_FLAT_AREA;
     if (strcmp(status, "survivor") == 0) return LEAF_SURVIVOR;
     return -1;
@@ -316,7 +321,7 @@ static int verify_leaf_claim(const cert_leaf *leaf, const char *theta_str,
                              enclosure_form form, int half, slong prec,
                              arb_t fenc, double *worst_cert_fhi,
                              long *n_disc, long *n_cert, long *n_flat,
-                             long *n_nonopt, long *n_surv) {
+                             long *n_pair_incompat, long *n_surv) {
     if (leaf->status == LEAF_DISCARD) {
         (*n_disc)++;
         if (!box_certainly_inadmissible(leaf->lo, leaf->hi, half, prec)) {
@@ -335,9 +340,10 @@ static int verify_leaf_claim(const cert_leaf *leaf, const char *theta_str,
         arb_get_ubound_arf(u, fenc, prec);
         double fhi = arf_get_d(u, ARF_RND_UP);
         int finite = arb_is_finite(fenc) && arf_is_finite(u);
-        arf_clear(u);
+        int below = finite && threshold_arf_leq(u, theta_str);
         if (finite && fhi > *worst_cert_fhi) *worst_cert_fhi = fhi;
-        if (!finite || !threshold_arf_leq(u, theta_str)) {
+        arf_clear(u);
+        if (!below) {
             fprintf(stderr,
                     "FAIL[certify]: f_hi=%g > theta=%s or non-finite at line %ld\n",
                     fhi, theta_str, leaf->line_no);
@@ -357,11 +363,11 @@ static int verify_leaf_claim(const cert_leaf *leaf, const char *theta_str,
         return 0;
     }
 
-    if (leaf->status == LEAF_NONOPTIMAL) {
-        (*n_nonopt)++;
+    if (leaf->status == LEAF_PAIR_INCOMPATIBLE) {
+        (*n_pair_incompat)++;
         if (!functionals_opposite_pairs_disjoint(leaf->lo, leaf->hi, form, prec)) {
             fprintf(stderr,
-                    "FAIL[nonoptimal]: opposite-pair intervals overlap at line %ld\n",
+                    "FAIL[pair_incompatible]: opposite-pair intervals overlap at line %ld\n",
                     leaf->line_no);
             return 1;
         }
@@ -383,7 +389,7 @@ static int verify_cover_node_slice(cert_leaf *leaf, const long *idx, long nidx,
                                    slong prec, arb_t fenc,
                                    double *worst_cert_fhi,
                                    long *n_disc, long *n_cert, long *n_flat,
-                                   long *n_nonopt, long *n_surv,
+                                   long *n_pair_incompat, long *n_surv,
                                    int depth) {
     if (depth > 128) {
         print_box_prefix("FAIL[cover]: exceeded recursion depth near ", lo, hi);
@@ -427,7 +433,7 @@ static int verify_cover_node_slice(cert_leaf *leaf, const long *idx, long nidx,
         lf->used = 1;
         return verify_leaf_claim(lf, theta_str, form, half, prec, fenc,
                                  worst_cert_fhi, n_disc, n_cert, n_flat,
-                                 n_nonopt, n_surv);
+                                 n_pair_incompat, n_surv);
     }
 
     int wc = widest_coord_cert(lo, hi);
@@ -481,12 +487,12 @@ static int verify_cover_node_slice(cert_leaf *leaf, const long *idx, long nidx,
 
     int fail = verify_cover_node_slice(leaf, left, nl, l0, h0, theta_str, form, half,
                                        prec, fenc, worst_cert_fhi,
-                                       n_disc, n_cert, n_flat, n_nonopt, n_surv,
+                                       n_disc, n_cert, n_flat, n_pair_incompat, n_surv,
                                        depth + 1);
     if (!fail) {
         fail = verify_cover_node_slice(leaf, right, nr, l1, h1, theta_str, form, half,
                                        prec, fenc, worst_cert_fhi,
-                                       n_disc, n_cert, n_flat, n_nonopt, n_surv,
+                                       n_disc, n_cert, n_flat, n_pair_incompat, n_surv,
                                        depth + 1);
     }
     free(left); free(right);
@@ -600,7 +606,7 @@ size_t cert_load_survivors(const char *path, double (**lo)[4], double (**hi)[4])
     *hi = malloc(alloc * sizeof(**hi));
     while (getline(&line, &cap, fp) != -1) {
         double blo[4], bhi[4];
-        char status[16];
+        char status[32];
         int item;
         if (!parse_line(line, blo, bhi, status, &item)) continue;
         if (strcmp(status, "survivor") != 0) continue;
@@ -689,7 +695,7 @@ int cert_verify(const char *path, const char *theta_str, int theta_set,
     char *line = NULL;
     size_t cap = 0;
     long n = 0, fails = 0, n_disc = 0, n_cert = 0, n_flat = 0;
-    long n_nonopt = 0, n_surv = 0;
+    long n_pair_incompat = 0, n_surv = 0;
     int coverage_checked = 0;
     long alloc = 1024;
     cert_leaf *leaf = malloc((size_t)alloc * sizeof(*leaf));
@@ -726,7 +732,7 @@ int cert_verify(const char *path, const char *theta_str, int theta_set,
             continue;
         }
         double lo[4], hi[4];
-        char status[16];
+        char status[32];
         int item;
         long line_no = physical_line;
         if (!parse_line(line, lo, hi, status, &item)) {
@@ -836,7 +842,7 @@ int cert_verify(const char *path, const char *theta_str, int theta_set,
                                                       theta_str, form, half, prec, fenc,
                                                       &worst_cert_fhi,
                                                       &n_disc, &n_cert, &n_flat,
-                                                      &n_nonopt, &n_surv, 0);
+                                                      &n_pair_incompat, &n_surv, 0);
             fails += cover_fail;
             free(idx);
         }
@@ -855,8 +861,8 @@ int cert_verify(const char *path, const char *theta_str, int theta_set,
     arb_clear(fenc);
     free(leaf);
 
-    printf("verify: %ld leaves  (discard %ld, certify %ld, flat_area %ld, nonoptimal %ld, survivor %ld)  prec=%ld\n",
-           n, n_disc, n_cert, n_flat, n_nonopt, n_surv, (long)prec);
+    printf("verify: %ld leaves  (discard %ld, certify %ld, flat_area %ld, pair_incompatible %ld, survivor %ld)  prec=%ld\n",
+           n, n_disc, n_cert, n_flat, n_pair_incompat, n_surv, (long)prec);
     printf("verify: dyadic partition coverage of the full root box: %s\n",
            coverage_checked ? (fails ? "FAILED" : "PASSED") : "SKIPPED");
     printf("verify: worst re-checked certified f_hi = %.15g  (theta = %s)\n",
@@ -916,7 +922,7 @@ static int load_records(const char *path, cert_record **out, long *nout,
             continue;
         }
         double lo[4], hi[4];
-        char status[16];
+        char status[32];
         int item;
         if (!parse_line(line, lo, hi, status, &item)) {
             fprintf(stderr, "FAIL[assemble]: could not parse %s line %ld\n",

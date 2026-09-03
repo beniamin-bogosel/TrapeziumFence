@@ -76,42 +76,58 @@ static void tri_area(jet *out, const jpt *P, const jpt *Q, const jpt *O, slong p
  * d1v, L2 through A2 with direction d2v.  The two non-pair edges are edge a = (ea_l1 on L1,
  * ea_l2 on L2) and edge b = (eb_l1 on L1, eb_l2 on L2).  AQ = quad area.
  *
- *  gamma = atan2(|d1 x d2|, |d1 . d2|)  in [0, pi/2].
- *  Form1 (inf gamma > GAMMA_SPLIT):  O = apex; T0,T1 = triangle areas of the
+ *  The directions d1v,d2v follow the CCW boundary of the quadrilateral.  The
+ *  sector cut out by the two inward half-planes, and hence the sector containing
+ *  the quadrilateral, has aperture
+ *
+ *      gamma = atan2(|d1 x d2|, -(d1 . d2))  in [0, pi].
+ *
+ *  This need not be the acute angle between the unoriented supporting lines.
+ *  Form1 (the lines are separated from parallel): O = apex; T0,T1 = triangle areas of the
  *     non-pair edges with apex O;  Fpair^2 = gamma (T0+T1)/AQ.
- *  Form2 (inf gamma <= GAMMA_SPLIT, parallel-safe, symmetric):
+ *  Form2 (the lines are nearly parallel, parallel-safe, symmetric):
  *     Fpair^2 = (gamma/sin gamma) (prodA + prodB) / (2 AQ),
  *     prodX = d(X_L1, L2) d(X_L2, L1).
- *  The two forms are algebraically identical (see README); out = sqrt(Fpair^2).
+ *  The two forms are algebraically identical for nonparallel lines, and Form2
+ *  supplies the continuous gamma -> 0 extension (see Documentation/main.tex);
+ *  out = sqrt(Fpair^2).
  *
  *  Do not replace this by a mere upper majorant while --pair-eq-cert uses
  *  disjointness of items 4 and 5: that certificate requires enclosures of the
  *  exact pair-construction values.
  */
-/* force: -1 = auto (branch on inf gamma), 0 = Form1, 1 = Form2 (for tests). */
+/* force: -1 = auto (branch on the acute line separation),
+ *        0 = Form1, 1 = Form2 (for tests). */
 static void pair_bound(jet *out,
                        const jpt *A1, const jpt *d1v, const jpt *A2, const jpt *d2v,
                        const jpt *ea_l1, const jpt *ea_l2,
                        const jpt *eb_l1, const jpt *eb_l2,
                        const jet *AQ, slong prec, int force) {
-    jet crossd, dotd, acrossd, adotd, gamma, fp2;
+    jet crossd, dotd, acrossd, adotd, negdotd, gamma, line_gamma, fp2;
     jet_init(&crossd); jet_init(&dotd); jet_init(&acrossd); jet_init(&adotd);
-    jet_init(&gamma); jet_init(&fp2);
+    jet_init(&negdotd); jet_init(&gamma); jet_init(&line_gamma); jet_init(&fp2);
 
     jet_cross(&crossd, d1v, d2v, prec);
     jet_dot(&dotd, d1v, d2v, prec);
     jet_abs(&acrossd, &crossd, prec);
     jet_abs(&adotd, &dotd, prec);
-    jet_atan2(&gamma, &acrossd, &adotd, prec);
+    jet_neg(&negdotd, &dotd);
+    jet_atan2(&gamma, &acrossd, &negdotd, prec);
 
-    /* branch on the lower bound of gamma (unless forced) */
+    /* Numerical conditioning depends on the acute angle between the supporting
+     * lines, min(gamma,pi-gamma), not on the containing-sector aperture itself.
+     * In particular an obtuse sector can approach pi while the lines approach
+     * parallel, and then the apex formula is ill-conditioned. */
+    jet_atan2(&line_gamma, &acrossd, &adotd, prec);
+
+    /* Branch on the lower bound of the acute line separation (unless forced). */
     int use_form1;
     if (force == 0)      use_form1 = 1;
     else if (force == 1) use_form1 = 0;
     else {
         arf_t glb;
         arf_init(glb);
-        arb_get_lbound_arf(glb, gamma.v, prec);
+        arb_get_lbound_arf(glb, line_gamma.v, prec);
         use_form1 = (arf_cmp_d(glb, GAMMA_SPLIT) > 0);
         arf_clear(glb);
     }
@@ -173,7 +189,7 @@ static void pair_bound(jet *out,
     jet_sqrt(out, &fp2, prec);
 
     jet_clear(&crossd); jet_clear(&dotd); jet_clear(&acrossd); jet_clear(&adotd);
-    jet_clear(&gamma); jet_clear(&fp2);
+    jet_clear(&negdotd); jet_clear(&gamma); jet_clear(&line_gamma); jet_clear(&fp2);
 }
 
 /* Build the six candidate-value jets from the four seeded coordinate jets. */
@@ -232,8 +248,8 @@ static void compute_items(jet item[6], const jet var[4], slong prec) {
 void functionals_eval(arb_t encl[6], const double lo[4], const double hi[4],
                       enclosure_form form, slong prec) {
     jet vbox[4], vmid[4], ibox[6], imid[6];
-    arb_t box_k, mid_k, rad_k;
-    arb_init(box_k); arb_init(mid_k); arb_init(rad_k);
+    arb_t box_k, mid_k;
+    arb_init(box_k); arb_init(mid_k);
     for (int k = 0; k < 4; k++) { jet_init(&vbox[k]); jet_init(&vmid[k]); }
     for (int i = 0; i < 6; i++) { jet_init(&ibox[i]); jet_init(&imid[i]); }
 
@@ -297,7 +313,7 @@ void functionals_eval(arb_t encl[6], const double lo[4], const double hi[4],
 
     for (int k = 0; k < 4; k++) { jet_clear(&vbox[k]); jet_clear(&vmid[k]); }
     for (int i = 0; i < 6; i++) { jet_clear(&ibox[i]); jet_clear(&imid[i]); }
-    arb_clear(box_k); arb_clear(mid_k); arb_clear(rad_k);
+    arb_clear(box_k); arb_clear(mid_k);
 }
 
 /* Test hook: evaluate a single pair bound at the point coord[4], forcing the
@@ -372,10 +388,12 @@ int functionals_min(arb_t fenc, const double lo[4], const double hi[4],
     for (int i = 0; i < 6; i++) arb_init(encl[i]);
     functionals_eval(encl, lo, hi, form, prec);
 
-    /* f = min over items.  Non-finite item enclosures (failed to bound, e.g.
-     * pair bound where A_Q straddles 0) are dropped: this can only enlarge the
-     * min, so certification (f_hi <= theta) stays sound.  If every item is
-     * non-finite, f is set to +inf so the caller must split, never certify. */
+    /* Take the minimum over finite item enclosures.  A non-finite item (for
+     * example, a pair bound where A_Q straddles zero) is dropped.  This can
+     * only enlarge the upper endpoint, so f_hi remains a rigorous one-sided
+     * upper bound for certification.  If an item was dropped, the constructed
+     * lower endpoint need not bound the true six-item minimum.  If every item
+     * is non-finite, return +inf so the caller must split, never certify. */
     arf_t flo, fhi, li, ui;
     arf_init(flo); arf_init(fhi); arf_init(li); arf_init(ui);
     int active = -1, any = 0;
