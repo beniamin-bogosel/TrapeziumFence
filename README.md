@@ -92,6 +92,25 @@ make OMP=1      # require OpenMP support
 make test
 ```
 
+## MATLAB/INTLAB reference implementation
+
+A deliberately readable, optimized serial implementation is provided in
+[`Intlab/`](Intlab/README.md).  It separates fence evaluation, box
+categorization, survivor refinement, subdivision, certificate verification,
+and analysis. Its serial hybrid default performs direct interval evaluation
+first and, on fine boxes of normalized width at most `1/32`, applies a
+lightweight centered derivative only to the dominant opposite-pair candidate.
+Natural and exhaustive automatic-gradient modes remain
+available for experiments. It uses the
+installed INTLAB path `/home/beni/INTLAB/Intlab_V13` by default and includes
+regression tests against the six C reference values.  Its native verifier also
+rebuilds the binary subdivision tree, so leafwise interval checks cannot mask
+a gap in the covered domain.
+The INTLAB classifier additionally applies the analytic short-side exclusion
+with `epsilon=0.122` before any area or fence evaluation. This optimization is
+INTLAB-only and does not modify the FLINT/Arb implementation or its historical
+certificate results.
+
 ## Run
 
 Example:

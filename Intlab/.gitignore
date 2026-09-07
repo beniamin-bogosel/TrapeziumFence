@@ -1,0 +1,8 @@
+# Local, recoverable history; never part of the distributable implementation.
+Archive/
+
+# Generated checkpoints, measurements and verification reports.
+*.jsonl.partial
+*_stats.mat
+certification_summary.mat
+verification_reports.mat

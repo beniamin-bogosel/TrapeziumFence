@@ -6,6 +6,7 @@ build/
 
 # Large/generated certificate outputs
 *.jsonl
+Intlab/CenteredGrid/*_result.mat
 
 # LaTeX auxiliary files
 Documentation/*.aux

@@ -1,0 +1,479 @@
+\documentclass[11pt]{article}
+\usepackage[a4paper,margin=26mm]{geometry}
+\usepackage{amsmath,amssymb,amsthm,booktabs}
+\usepackage[hidelinks]{hyperref}
+\newtheorem{proposition}{Proposition}
+\newcommand{\Area}{\mathcal A}
+\newcommand{\PhiQ}{\Phi(Q)}
+\title{Mathematical reductions for the INTLAB fence search}
+\author{}
+\date{September 2026}
+\begin{document}
+\maketitle
+
+\section{Scope and hypotheses}
+The chord, short-side, polynomial-angle, and rational-pair improvements below
+are integrated into the INTLAB production classifier and schema-8 certificate
+verifier. The later contractor and active-incidence ideas remain proposals.
+The FLINT/Arb implementation is outside this work.
+Write
+\[
+ D=(0,0),\quad C=(1,0),\quad B=(b_1,b_2),\quad A=(a_1,a_2).
+\]
+\[
+ \Area=|Q|,\qquad S=2\Area=b_2+b_1a_2-a_1b_2.
+\]
+The relevant shapes are convex, positive-area quadrilaterals above the base,
+whose longest side is \(DC\). All statements about boxes concern their
+admissible subset; inadmissible points need not satisfy the geometric identities.
+Let
+\[
+ \theta=1.0496,\qquad t=\theta^2=1.10166016,\qquad
+ \eta=3t-\pi>0.
+\]
+The six-candidate identity is Proposition 6 of the supplied manuscript
+\emph{Trapezium.pdf}. A strictly better reference competitor has already been
+certified. Thus an upper bound \(\PhiQ^2\le t\) excludes maximality.
+
+The target is fewer expensive evaluations, not artificially fewer survivors.
+One may neither assume that a maximizer is a trapezium nor impose
+\(a_2=b_2\), \(a_1+b_1=1\), or the final paper rectangles: those would use
+the intended conclusion to prove itself. Opposite-pair equality remains
+conditional on the analytic class in Proposition 17.
+
+\section{Keep the height information in the flat-area argument}
+\begin{proposition}
+Put \(H=\max(a_2,b_2)\). Then
+\[
+ \PhiQ^2\le \frac{H^2}{\Area}.
+\]
+Consequently a box is excluded if interval arithmetic proves
+\[
+ \max(a_2^2,b_2^2)-t\Area\le0
+\]
+throughout its admissible subset.
+\end{proposition}
+\begin{proof}
+Translate a vertical line continuously across \(Q\). The area on its left
+varies continuously from zero to \(\Area\), so one position bisects the area.
+Its intersection with \(Q\) is a segment of length at most \(H\).
+After division by \(\sqrt{\Area}\) this is the claimed bound.
+\end{proof}
+The implemented flat-area bound follows by replacing \(H\) with
+\(2\Area\), which is valid because the triangles \(DCB,DCA\) lie in \(Q\).
+That replacement loses information: a box can satisfy \(H^2\le t\Area\)
+even when \(\Area>t/4\).
+This chord need not be the exact pair-5 construction; it is independently a
+valid bisecting fence.
+
+There is an elementary sharp box test. The polynomials
+\[
+ a_2^2-\frac t2(b_2+b_1a_2-a_1b_2),\qquad
+ b_2^2-\frac t2(b_2+b_1a_2-a_1b_2)
+\]
+are convex in each coordinate separately. Their maxima over a rectangular box
+are therefore attained among its 16 corners, by maximizing one coordinate
+at a time. Evaluating the corner expressions with outward rounding proves
+their upper bounds without derivatives or an interval quotient.
+General fence functions do not enjoy this corner property.
+
+\subsection{Use all four side directions}
+For any direction, a translating line parallel to that direction has a
+bisecting position. The segment length is bounded by the width of the
+projection of \(Q\) onto that direction. Choose the direction perpendicular
+to each side, so the projection width is the greatest distance to its
+supporting line. Define the nonnegative turns
+\[
+ p=S-b_2=b_1a_2-a_1b_2,\qquad
+ q=S-a_2=(b_1-1)a_2+(1-a_1)b_2.
+\]
+The four resulting heights are
+\[
+\begin{array}{c|c}
+\text{supporting side}&\text{height}\\ \hline
+DC&\max(a_2,b_2)\\
+CB&\max(b_2,q)/|CB|\\
+BA&\max(p,q)/|BA|\\
+AD&\max(a_2,p)/|AD|
+\end{array}
+\]
+For example, the \(CB\) test is the pair of polynomial inequalities
+\[
+ b_2^2-t\Area|CB|^2\le0,\qquad q^2-t\Area|CB|^2\le0.
+\]
+There is no need to compute a square root or divide by an interval side
+length. Analogous tests apply to the other sides.
+
+\section{A stronger short-side theorem}
+The earlier short-side argument bounds the pair adjacent to a side of
+length \(s\) by
+\[
+ F_{\rm pair}^2\le\gamma+\frac{s^2}{\Area},
+\]
+where \(\gamma\) is the aperture of the containing sector.
+For completeness, if the sector apex triangles cut off by the short side
+and its opposite have areas \(T_s,T_o\), convexity gives nesting and
+\(T_s+T_o=\Area+2\min(T_s,T_o)\le\Area+2T_s\).
+Writing their short-side radii as \(r_1,r_2\) gives
+\[
+ 2\gamma T_s=\gamma r_1r_2\sin\gamma
+ \le s^2(\gamma/2)\cot(\gamma/2)\le s^2.
+\]
+Together with the exact pair formula this proves the bound; the parallel
+case is its continuous limit.
+
+The improvement is to use the actual exclusion threshold, instead of the
+fixed angle \(\pi/3\).
+If \(\PhiQ^2>t\), every interior angle is \(>t\).
+The sum of the two angles at the endpoints of the opposite side lies
+strictly between \(2t\) and \(2\pi-2t\), so
+\[
+ 0\le\gamma<\pi-2t.
+\]
+It follows that a necessary condition for \(\PhiQ^2>t\) is
+\[
+ \boxed{s^2>\eta\Area,\qquad \eta=3t-\pi.}
+\]
+This yields an inexpensive area-dependent certificate
+\(s^2-\eta\Area\le0\), without first proving angle inequalities on the box.
+The argument is a dichotomy: a point with a small angle is already excluded;
+every other point satisfies the pair-angle estimate.
+
+Combining this with \(\Area>t/4\), necessary by the flat-area argument, gives
+the uniform exclusion
+\[
+ s\le \varepsilon_\ast,\qquad
+ \varepsilon_\ast=\frac12\sqrt{t(3t-\pi)}
+     \simeq0.212130772747.
+\]
+Thus \(\varepsilon=0.212\) is safe, a substantial improvement over \(0.122\).
+For a rational check one may use \(\pi<355/113\):
+\[
+ \frac{t(3t-355/113)}4-(0.212)^2>0.000055.
+\]
+The old code's coarser bound \(\pi<3.142\) does not suffice for this particular
+decimal choice, and its old parameter condition must be replaced, not bypassed.
+
+Another useful unconditional formulation is
+\[
+ \PhiQ^2\le\frac{\pi+s^2/\Area}{3}.
+\]
+Indeed, if \(m\) is the smallest angle, then \(m\le\pi/2\) and
+\(\gamma\le\pi-2m\). Therefore
+\(\PhiQ^2\le\min(m,\pi-2m+s^2/\Area)
+\le(\pi+s^2/\Area)/3\).
+
+\section{Turn angle comparisons into low-degree polynomials}
+For two rays bounding an interior angle \(\alpha\), write
+\(c\) for their nonnegative cross magnitude and \(d\) for their dot product.
+Since \(0<t<\pi/2\),
+\[
+ \alpha\le t
+ \quad\Longleftrightarrow\quad
+ \sin(t)d-\cos(t)c\ge0
+ \quad\Longleftrightarrow\quad
+ k d-c\ge0,\qquad k=\tan t.
+\]
+This follows from
+\(c\cos t-d\sin t=|u||v|\sin(\alpha-t)\).
+The constant \(k\) needs one validated evaluation at startup.
+For a convex quadrilateral, the four polynomial residuals are
+\[
+\begin{aligned}
+ E_D&=ka_1-a_2,\\
+ E_C&=k(1-b_1)-b_2,\\
+ E_B&=k((1-b_1)(a_1-b_1)-b_2(a_2-b_2))-q,\\
+ E_A&=k(a_1^2+a_2^2-a_1b_1-a_2b_2)-p.
+\end{aligned}
+\]
+Any one residual nonnegative throughout a box certifies a vertex bound.
+These use signed turns on the admissible subset, so absolute-value
+dependencies are unnecessary.
+
+Moreover,
+\[
+ E_A=k(a_1^2+a_2^2)+(-kb_1+b_2)a_1+(-kb_2-b_1)a_2
+\]
+is affine in \(B\) and separably convex in \(A\). Its minimum over a box is
+obtained by taking the four \(B\)-corners and minimizing two scalar quadratics
+over the \(A\)-intervals. The minimizer of \(kx^2+\ell x\) on \([l,u]\) is
+\(\max(l,\min(u,-\ell/(2k)))\).
+Similarly,
+\[
+ E_B=k(b_1^2+b_2^2)+[-k(1+a_1)-a_2]b_1
+                    +[-ka_2-1+a_1]b_2+ka_1+a_2.
+\]
+These formulas give sharp vertex tests without general automatic
+differentiation. Interval arithmetic must enclose the clamped minimizer;
+ordinary rounded minimizers alone are not proof bounds.
+
+\section{Rational enclosures for the opposite pairs}
+On an admissible shape, set
+\[
+\begin{array}{lll}
+P_5=b_1-a_1,&C_5=a_2-b_2,&N_5=a_2p+b_2q,\\
+P_6=a_1(b_1-1)+a_2b_2,&C_6=a_2+b_2-S,&N_6=a_2b_2+pq.
+\end{array}
+\]
+The exact parallel-safe formulas simplify, when \(P_j>0\), to
+\[
+ F_j^2=\frac{N_j}{SP_j}K(C_j/P_j),\qquad
+ K(z)=\frac{\arctan z}{z}
+     =\int_0^1\frac{du}{1+z^2u^2},\quad K(0)=1.
+\]
+This cancels the side-length square roots and the apparent singularity at
+parallel lines before interval evaluation.
+For a possible above-threshold shape, both pair angles are
+\(<\pi-2t<\pi/2\), so both \(P_j\) are positive. For a simple implementation
+one may require their interval lower endpoints to be positive; if this is not
+proved, skip the test.
+
+The pair-angle restriction is itself an inexpensive exclusion. Put
+\(\Gamma=\pi-2t\), so \(0<\Gamma<\pi/2\).
+For either pair, an interval proof of
+\[
+ |C_j|-\tan(\Gamma)P_j\ge0
+\]
+proves \(\gamma_j\ge\Gamma\), hence some vertex angle is at most \(t\).
+This test does not require pair equality or evaluation of an inverse tangent.
+Its validity follows from the sign of \(\sin(\gamma_j-\Gamma)\) on
+\(\gamma_j\in[0,\pi]\).
+
+\begin{proposition}
+For every real \(z\), with \(w=z^2\),
+\[
+ \frac{3}{3+w}\le K(z)\le\frac{15+4w}{15+9w}.
+\]
+\end{proposition}
+\begin{proof}
+The lower bound follows from Jensen's inequality for
+\(v\mapsto(1+wv)^{-1}\) and \(\int_0^1u^2du=1/3\).
+For the upper bound write
+\[
+ K(z)=1-w\int_0^1\frac{u^2}{1+wu^2}\,du.
+\]
+Under the probability measure \(3u^2du\), Jensen gives
+\[
+ \int_0^1\frac{u^2}{1+wu^2}\,du
+ \ge\frac{1}{3(1+3w/5)}.
+\]
+Substitution gives the upper bound. No small-angle restriction is required.
+\end{proof}
+Consequently, for \(N_j\ge0,S>0,P_j>0\),
+\[
+ \frac{3N_jP_j}{S(3P_j^2+C_j^2)}
+ \le F_j^2\le
+ \frac{N_j(15P_j^2+4C_j^2)}
+      {SP_j(15P_j^2+9C_j^2)}.
+\]
+A sufficient threshold test is the polynomial inequality
+\[
+ N_j(15P_j^2+4C_j^2)
+   -tSP_j(15P_j^2+9C_j^2)\le0.
+\]
+It has no transcendental operations, square roots, or divisions.
+It is only a sufficient test; unresolved boxes continue to stronger tests.
+Rational bounds can be sharpened further using quadrature bounds for the
+displayed integral, but this requires a separate error proof.
+
+Pair equality is better tested jointly than by comparing two unrelated
+interval values:
+\[
+ F_5^2-F_6^2
+ =\frac{N_5P_6K(C_5/P_5)-N_6P_5K(C_6/P_6)}{SP_5P_6}.
+\]
+The area factor cancels from the zero test. A strictly signed numerator
+excludes pair equality. Rational bounds yield sufficient polynomial sign
+tests; a centered enclosure for this single residual is another option.
+This differs from independently centering six complete fence values.
+
+\section{Further geometric reductions and their logical limits}
+\paragraph{Constraint propagation.}
+Every possible above-threshold point satisfies all four angle lower bounds,
+\(\Area>t/4\), the short-edge inequalities, convexity, and side-length bounds.
+Intersecting interval consequences of these conditions can shrink a box
+before subdivision. For example,
+\[
+ a_1<a_2/k,\qquad b_1>1-b_2/k.
+\]
+Using \(|AD|,|CB|\le1\) improves the global restrictions to
+\[
+ a_1<\cos t,\qquad b_1>1-\cos t.
+\]
+For a nonnegative horizontal component, the angle condition bounds it by
+the side length times \(\cos t\); for a negative component the conclusion
+is immediate. Contracting boxes is a proof operation: the excluded slabs
+and the contracted survivor must be represented in the certificate, or the
+original parent must retain a replayable contractor witness.
+
+\paragraph{Active-side incidence.}
+Lemma 12 of the manuscript states that every side of a maximizing
+quadrilateral hosts an active fence endpoint. With item numbering
+\(D,C,B,A,5,6\), the possible incident items are
+\[
+ DC:\{1,2,5\},\quad CB:\{2,3,6\},\quad
+ BA:\{3,4,5\},\quad AD:\{4,1,6\}.
+\]
+Let \(U\) be an upper bound for the minimum of the six values throughout a
+box. If every candidate incident to some side has lower bound \(>U\), no
+point in the box can maximize. This is a non-optimality certificate, not a
+claim that \(\Phi\le\theta\). It can be inexpensive after candidate bounds
+have already been computed. It cannot be used to establish Lemma 12 itself.
+
+\paragraph{Symmetry.}
+The reflection
+\((b_1,b_2,a_1,a_2)\mapsto(1-a_1,a_2,1-b_1,b_2)\)
+can transfer a valid exclusion from the reflected box. Endpoints must be
+rounded outward unless their exactness is established.
+Adding such a fallback is sound but doubles some evaluations; it needs
+benchmarking. Reflection does not justify silently dropping the corresponding
+half of an already recorded full-root proof.
+
+\paragraph{Do not assume two active vertex angles.}
+The discussion preceding Proposition 17 (manuscript p.~16) explicitly leaves
+two cases to the certified computation: P2V1 with $V=\{C\}$ and P2V2 with
+$V=\{C,D\}$. In Section 4, the P2V1/$\{C\}$ argument invokes Proposition 17
+in Step 6(ii) (pp.~29--30). Its exclusion is therefore not an independent
+analytic premise for the computation proving that proposition. Imposing two
+active angles in that computation would be circular. Section 5's analytic
+exclusion of P2V1 applies to trapezia, not all quadrilaterals under consideration.
+
+The implemented P2V0 rule below excludes no-active-vertex configurations
+without assuming pair equality. The remaining single-vertex branch could
+additionally be tested against its
+independently derived stationarity identity (50). The two-vertex condition
+can be imposed on the other branch only. These latter additions are not enabled.
+
+\paragraph{Implemented exclusion of all vertex fences being inactive.}
+Suppose an interval upper bound $U$ for one squared opposite-pair value
+$F_j^2$, $j\in\{5,6\}$, satisfies
+\[
+       \alpha_v>U\qquad(v=A,B,C,D)
+\]
+throughout the admissible subset of a box. Since $\Phi(Q)^2\le F_j^2\le U$,
+no vertex fence is active. By Proposition 6, only opposite-pair fences can
+be active. If only one pair is active, two sides host no active endpoint,
+contrary to Lemma 12. If both are active, Sections 4 and 5 independently
+exclude P2V0 for non-trapezia and trapezia with exactly one pair of parallel
+sides, respectively. Remark 19 independently excludes parallelograms.
+Thus no admissible shape in the box is a maximizer. This argument neither
+invokes Proposition 17 nor assumes that the two pair values are equal.
+It is a non-optimality proof, not necessarily a bound $\Phi(Q)\le\theta$.
+
+The implementation obtains $U$ from the rational pair upper bounds proved
+above, requiring positive $S,P_j$ and nonnegative $N_j$ throughout the box.
+Invalid or nonfinite pair bounds are skipped. If $0\le U<\pi/2$, put
+$k=\tan U$ with validated rounding. The strict tests are
+\[
+           E_v(k)=k d_v-c_v<0\qquad(v=A,B,C,D),
+\]
+where $d_v,c_v$ are the signed dot and cross expressions above.
+They imply $\alpha_v>U$ because $\alpha_v\in[0,\pi]$ and $U<\pi/2$.
+For $D,C$ these are linear interval tests. For $A,B$ the residuals are
+separately convex in all four coordinates, so their maxima occur among the
+16 corners. Corner expressions are evaluated with outward rounding and
+every nonfinite value fails closed. A nonnegative upper bound is inconclusive;
+strict negativity is required for every vertex.
+
+The certificate status is \texttt{p2v0\_nonoptimal}, the item selects $j=5$ or
+$6$, and the verifier reconstructs the bound and all four strict tests.
+Schema 7 records the independent enabling flag \texttt{p2v0\_cert}; schemas
+4--6 do not enable this rule. Priority is after admissibility, short-side and
+flat-area tests, but before other geometric or exact/centered fence work.
+The classifier attempts the rule only at normalized width at most $1/32$:
+coarse tests gave no benefit. This binary64 scheduling decision only skips
+an optional proof attempt and has no effect on the validity of an exclusion.
+
+\paragraph{Implemented common active-pair/vertex value.}
+Use the independent analytic reductions of P0 and P1 in Sections 4--5
+(as applicable to non-trapezia and trapezia), the P2V0 exclusions there,
+and Remark 19 for parallelograms.
+After these reductions a maximizer must have both opposite pairs and at
+least one vertex active. This is stronger than equality of the pair values
+alone: their common value must be the minimum fence value. It does not
+assume Proposition 17 or the P2V1 conclusion that invokes that proposition.
+
+Let $I_1,\ldots,I_6$ enclose the normalized fence \emph{lengths} on a cell,
+with opposite pairs indexed by 5 and 6, and put $J=I_5\cap I_6$.
+Any maximizer in the cell must satisfy, for some $v\in\{1,2,3,4\}$,
+\[
+           \Phi(Q)=F_5(Q)=F_6(Q)=F_v(Q)\in J\cap I_v.
+\]
+Consequently the cell contains no maximizer if
+\[
+ J=\varnothing\quad\text{or}\quad
+ \bigl(J\cap I_v=\varnothing\ \text{for every }v=1,2,3,4\bigr).
+\]
+For nonempty $J=[\ell,u]$, each vertex must satisfy either
+$\sup I_v<\ell$ or $\inf I_v>u$ to certify this exclusion.
+In particular, vertices below $J$ need not surpass it to be incompatible.
+The comparisons are strict: touching closed endpoints is inconclusive.
+All entries must use the same normalization and units; raw vertex angles
+cannot be compared with pair lengths. Nonfinite bounds fail closed, except
+that an empty pair intersection needs no vertex bound. Taking maxima and
+minima of already outward-rounded endpoints introduces no new arithmetic
+rounding error. This proves non-optimality, not necessarily $\Phi\le\theta$.
+
+The implementation reuses pair intervals, lazily evaluates natural vertex
+lengths before derivatives, and stops at the first possible intersection.
+If centering tightens a bound, it retries with the tightened enclosures.
+The optional test adds no gradient objects and never contracts a cell.
+The older polynomial P2V0 prefilter remains a separate inexpensive rule.
+The new status is \texttt{active\_pair\_vertex\_incompatible}, with item 0;
+the stored intersection is diagnostic only. Schema 8 records an independent
+enabling flag and a fixed analytic-reduction identifier. Verification
+reconstructs the proof from the cell; schemas 4--7 disable the new rule.
+At least \emph{one} active vertex is required, never two.
+
+\paragraph{Polynomial range bounds.}
+The low-degree residuals above are better targets for monotonicity tests,
+explicit quadratic minimization, or Bernstein coefficient bounds than the
+full six-fence expressions. Bernstein coefficient enclosures provide range
+bounds, as illustrated in the official
+\href{https://www.tuhh.de/ti3/rump/intlab/demos/html/dintlab.html}
+{INTLAB demonstration}. Multivariate range bounds must use outward-rounded
+coefficient transformations; checking only polynomial corner values is
+valid only with a proved property such as the separate convexity above.
+
+\section{Historical diagnostics and suggested order}
+The diagnostic scripts and original measurement README described in this
+section are preserved locally under the git-ignored \texttt{Intlab/Archive/}.
+They are not part of the production driver. The current verified centered
+chain, hulls, and stage timings are documented in \texttt{Intlab/README.md}.
+The historical \texttt{assess\_exclusions.m} reads every saved survivor
+from a specified certificate and evaluates the proposed tests with INTLAB.
+It neither modifies the ongoing search nor writes a proof certificate.
+It reports individual counts and their union; overlapping counts must not
+be added. In particular these are the complete base survivor set, not the
+clustered sample of 48 subtrees discussed earlier in the thread.
+
+On all 77,910 saved base survivors the sharp height test excludes 12,617
+cells, and the four side-direction chord tests together exclude 13,102.
+The improved uniform short-side test excludes 149, its area-dependent version
+847, the sharpened vertex tests 58, and the rational pair tests 154 and
+1,524 respectively. The pair-angle test excludes 26. The union of the
+unconditional exclusions is 15,209 cells (19.52 percent), leaving 62,701.
+The 15 pair-disjointness exclusions are already in this union.
+The archived theory README records the input hash and the complete table.
+
+The most promising implementation order is: height and side-direction chord
+tests; the strengthened short-side rule; polynomial vertex tests; rational
+pair tests and the common-denominator equality residual; then contractors.
+The first four groups are implemented in the existing leaf-classification
+architecture, with the common area cancelled for rational pair equality.
+Contractors require a more substantial certificate extension.
+Counts on saved cells do not establish an end-to-end runtime improvement,
+and none of these changes justifies a new speed claim without a full
+comparison on the same input seeds.
+
+A bounded serial implementation comparison on 64 evenly spaced saved base
+survivors, refined to normalized width $0.0078125$, gave 467 leaves and
+163 survivors under the old rules, versus 391 leaves and 114 survivors under
+the new rules. Search times were approximately 14.5 and 15.8 seconds.
+The extra exclusions therefore did not yet yield a speedup on this step;
+their possible benefit over a longer refinement chain remains to be measured.
+The implemented cascade places the linear vertex and sharp height tests
+before exact pairs, and the remaining algebraic tests afterward. It avoids
+duplicate natural vertex evaluations and shares interval work within rule
+families. No contractor or final trapezium identity is imposed.
+\end{document}
